@@ -31,10 +31,16 @@
 
 选择一个 OneBot 实现，部署并启用 HTTP 服务。
 
+接收端口7778
+
 ### 启动步骤
 
 1. 下载安装包并解压
-2. 运行 `./LittleMeowBot`
+
+2. 在exe目录下运行run.sh
+
+   ```sudo bash run.sh```
+
 3. 访问管理后台：`http://localhost:7778/admin.html`
 
 ### 首次配置
