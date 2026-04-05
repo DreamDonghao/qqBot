@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>LittleMeowBot 管理后台</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #a5b4fc;
+            --bg-dark: #0f172a;
+            --bg-sidebar: #1e293b;
+            --bg-main: #f1f5f9;
+            --card-bg: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-light: #94a3b8;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 260px;
+            background: var(--bg-sidebar);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .sidebar-subtitle {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 2px;
+        }
+
+        .sidebar-nav {
+            padding: 16px 12px;
+            flex: 1;
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 8px 12px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-light);
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .nav-item.active {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        .nav-item svg {
+            width: 20px;
+            height: 20px;
+            opacity: 0.8;
+        }
+
+        .nav-item.active svg {
+            opacity: 1;
+        }
+
+        .nav-subitem {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px 10px 48px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-light);
+            font-size: 13px;
+        }
+
+        .nav-subitem:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+
+        .nav-subitem.active {
+            color: var(--primary-light);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .nav-badge {
+            background: var(--primary);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        /* 主内容区 */
+        .main {
+            flex: 1;
+            margin-left: 260px;
+            padding: 32px;
+            min-height: 100vh;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .page-subtitle {
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-size: 14px;
+        }
+
+        /* 卡片 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-main);
+            padding: 4px;
+            border-radius: 10px;
+            margin-bottom: 24px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            border: none;
+            background: transparent;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab.active {
+            background: #fff;
+            color: var(--primary);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 表格 */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+        }
+
+        th {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        td {
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: var(--bg-main);
+        }
+
+        /* 按钮 */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* 输入框 */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            background: #fff;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        .prompt-card {
+            min-height: calc(100vh - 200px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .prompt-card .card-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        textarea.form-input {
+            flex: 1;
+            min-height: 500px;
+            resize: vertical;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        /* 聊天记录 */
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .chat-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .chat-status.connected {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .chat-status.disconnected {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .chat-status.connected .status-dot {
+            background: var(--success);
+        }
+
+        .chat-status.disconnected .status-dot {
+            background: var(--danger);
+        }
+
+        .chat-container {
+            background: var(--bg-main);
+            border-radius: 12px;
+            padding: 16px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .chat-message {
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            border-radius: 12px;
+            max-width: 85%;
+        }
+
+        .chat-message.user {
+            background: #fff;
+            border: 1px solid var(--border);
+            margin-right: auto;
+        }
+
+        .chat-message.assistant {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff;
+            margin-left: auto;
+        }
+
+        .chat-role {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            opacity: 0.7;
+        }
+
+        .chat-content {
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .chat-empty {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-light);
+        }
+
+        .chat-empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* 群记忆 */
+        .memory-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .memory-item {
+            padding: 8px 12px;
+            background: var(--bg-main);
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            border-left: 3px solid var(--primary);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 24px;
+            background: var(--text-primary);
+            color: #fff;
+            border-radius: 10px;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideUp 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .toast.error {
+            background: var(--danger);
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-light);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-light);
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <div class="logo-icon">🐱</div>
+                    <div>
+                        <div class="sidebar-title">LittleMeowBot</div>
+                        <div class="sidebar-subtitle">管理后台</div>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">配置管理</div>
+                    <div :class="{active: currentView === 'llm'}" @click="currentView = 'llm'" class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                        LLM配置
+                    </div>
+                    <div :class="{active: currentView === 'prompts'}" @click="currentView = 'prompts'" class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" x2="8" y1="13" y2="13"/>
+                            <line x1="16" x2="8" y1="17" y2="17"/>
+                        </svg>
+                        提示词
+                    </div>
+                    <div :class="{active: currentView === 'emojis'}" @click="currentView = 'emojis'" class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                            <line x1="9" x2="9.01" y1="9" y2="9"/>
+                            <line x1="15" x2="15.01" y1="9" y2="9"/>
+                        </svg>
+                        表情库
+                    </div>
+                    <div :class="{active: currentView === 'admins'}" @click="currentView = 'admins'" class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        管理员
+                    </div>
+                    <div :class="{active: currentView === 'groups'}" @click="currentView = 'groups'" class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M17 8h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2v4l-4-4H9a2 2 0 0 1-2-2v-1"/>
+                            <path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2v4l4-4"/>
+                        </svg>
+                        启用群
+                    </div>
+                    <div :class="{active: currentView === 'chatList'}" @click="currentView = 'chatList'"
+                         class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        聊天记录
+                    </div>
+                    <div :class="{active: currentView === 'kb'}" @click="currentView = 'kb'" class="nav-item">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="2" x2="22" y1="12" y2="12"/>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                        知识库配置
+                    </div>
+                    <div class="nav-item" :class="{active: currentView === 'memoryConfig'}" @click="currentView = 'memoryConfig'">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                        记忆配置
+                    </div>
+                    <div class="nav-item" :class="{active: currentView === 'qqConfig'}" @click="currentView = 'qqConfig'">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                        </svg>
+                        OneBot 配置
+                    </div>
+                </div>
+            </nav>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main">
+            <!-- LLM配置 -->
+            <div v-if="currentView === 'llm'">
+                <div class="page-header">
+                    <h1 class="page-title">LLM配置</h1>
+                    <p class="page-subtitle">配置各Agent的模型参数</p>
+                </div>
+
+                <div class="tabs">
+                    <button :class="{active: selectedLLM === name}" :key="name"
+                            @click="selectedLLM = name" class="tab"
+                            v-for="name in llmNames">{{ name }}
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">API Key</label>
+                            <input class="form-input" placeholder="sk-..." type="password" v-model="llmConfig.apiKey">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Base URL</label>
+                            <input class="form-input" placeholder="https://api.example.com" type="text"
+                                   v-model="llmConfig.baseUrl">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Path</label>
+                            <input class="form-input" placeholder="/v1/chat/completions" type="text"
+                                   v-model="llmConfig.path">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Model</label>
+                            <input class="form-input" placeholder="gpt-4" type="text" v-model="llmConfig.model">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Max Tokens</label>
+                            <input class="form-input" type="number" v-model.number="llmConfig.maxTokens">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Temperature</label>
+                            <input class="form-input" max="2" min="0" step="0.1" type="number"
+                                   v-model.number="llmConfig.temperature">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Top P</label>
+                            <input class="form-input" max="1" min="0" step="0.1" type="number"
+                                   v-model.number="llmConfig.topP">
+                        </div>
+                    </div>
+                    <button @click="saveLLMConfig" class="btn btn-primary">保存配置</button>
+                </div>
+            </div>
+
+            <!-- 提示词 -->
+            <div v-if="currentView === 'prompts'">
+                <div class="page-header">
+                    <h1 class="page-title">提示词管理</h1>
+                    <p class="page-subtitle">编辑Agent的系统提示词</p>
+                </div>
+
+                <div class="tabs">
+                    <button :class="{active: selectedPrompt === key}" :key="key"
+                            @click="selectedPrompt = key" class="tab"
+                            v-for="key in promptKeys">{{ key }}
+                    </button>
+                </div>
+
+                <div class="card prompt-card">
+                    <div class="card-body">
+                        <textarea class="form-input" placeholder="输入提示词内容..." v-model="promptContent"></textarea>
+                        <div style="margin-top: 16px;">
+                            <button @click="savePrompt" class="btn btn-primary">保存提示词</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表情库 -->
+            <div v-if="currentView === 'emojis'">
+                <div class="page-header">
+                    <h1 class="page-title">表情库</h1>
+                    <p class="page-subtitle">管理Bot可用的表情图片</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">添加表情</h3>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">名称</label>
+                            <input class="form-input" placeholder="表情名称" type="text" v-model="newEmoji.name">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">路径</label>
+                            <input class="form-input" placeholder="/path/to/emoji.png" type="text"
+                                   v-model="newEmoji.path">
+                        </div>
+                    </div>
+                    <button @click="addEmoji" class="btn btn-success">添加表情</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">表情列表</h3>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>路径</th>
+                                <th style="width:100px">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr :key="emoji.name" v-for="emoji in emojis">
+                                <td>{{ emoji.name }}</td>
+                                <td><code style="font-size:12px">{{ emoji.path }}</code></td>
+                                <td>
+                                    <button @click="removeEmoji(emoji.name)" class="btn btn-danger btn-sm">删除</button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        <div class="empty-state" v-if="emojis.length === 0">
+                            <div class="empty-icon">😺</div>
+                            <p>暂无表情</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 管理员 -->
+            <div v-if="currentView === 'admins'">
+                <div class="page-header">
+                    <h1 class="page-title">管理员管理</h1>
+                    <p class="page-subtitle">添加或移除Bot管理员</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">添加管理员</h3>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">QQ号</label>
+                        <input class="form-input" placeholder="输入QQ号" style="max-width:300px" type="number"
+                               v-model.number="newAdminQQ">
+                    </div>
+                    <button @click="addAdmin" class="btn btn-success">添加管理员</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">管理员列表</h3>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>QQ号</th>
+                                <th style="width:100px">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr :key="admin.qq" v-for="admin in admins">
+                                <td><code>{{ admin.qq }}</code></td>
+                                <td>
+                                    <button @click="removeAdmin(admin.qq)" class="btn btn-danger btn-sm">移除</button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        <div class="empty-state" v-if="admins.length === 0">
+                            <div class="empty-icon">👤</div>
+                            <p>暂无管理员</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 启用群 -->
+            <div v-if="currentView === 'groups'">
+                <div class="page-header">
+                    <h1 class="page-title">启用群管理</h1>
+                    <p class="page-subtitle">配置Bot在哪些群生效</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">添加群</h3>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">群号</label>
+                        <input class="form-input" placeholder="输入群号" style="max-width:300px" type="number"
+                               v-model.number="newGroupId">
+                    </div>
+                    <button @click="enableGroup" class="btn btn-success">启用群</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">已启用群列表</h3>
+                        <button :disabled="refreshingNames" @click="refreshAllGroupNames"
+                                class="btn btn-primary btn-sm">
+                            {{ refreshingNames ? '刷新中...' : '刷新所有群名称' }}
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>群名称</th>
+                                <th>群号</th>
+                                <th>消息数</th>
+                                <th style="width:100px">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr :key="group.groupId" v-for="group in enabledGroups">
+                                <td>
+                                    <strong v-if="group.groupName">{{ group.groupName }}</strong>
+                                    <span style="color: var(--text-light)" v-else>未获取</span>
+                                </td>
+                                <td><code>{{ group.groupId }}</code></td>
+                                <td>{{ group.messageCount || 0 }} 条</td>
+                                <td>
+                                    <button @click="disableGroup(group.groupId)" class="btn btn-danger btn-sm">禁用
+                                    </button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        <div class="empty-state" v-if="enabledGroups.length === 0">
+                            <div class="empty-icon">👥</div>
+                            <p>暂无启用的群</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 聊天记录选择 -->
+            <div v-if="currentView === 'chatList'">
+                <div class="page-header">
+                    <h1 class="page-title">聊天记录</h1>
+                    <p class="page-subtitle">选择群聊查看实时消息</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">选择群聊</h3>
+                        <button :disabled="refreshingNames" @click="refreshAllGroupNames"
+                                class="btn btn-primary btn-sm">
+                            {{ refreshingNames ? '刷新中...' : '刷新群名称' }}
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>群名称</th>
+                                <th>群号</th>
+                                <th>消息数</th>
+                                <th style="width:100px">操作</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr :key="group.groupId" v-for="group in enabledGroups">
+                                <td>
+                                    <strong v-if="group.groupName">{{ group.groupName }}</strong>
+                                    <span style="color: var(--text-light)" v-else>未获取</span>
+                                </td>
+                                <td><code>{{ group.groupId }}</code></td>
+                                <td>{{ group.messageCount || 0 }} 条</td>
+                                <td>
+                                    <button @click="selectGroup(group.groupId)" class="btn btn-primary btn-sm">
+                                        查看
+                                    </button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        <div class="empty-state" v-if="enabledGroups.length === 0">
+                            <div class="empty-icon">💬</div>
+                            <p>暂无启用的群</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 聊天记录详情 -->
+            <div v-if="currentView === 'chat'">
+                <div class="page-header" style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <h1 class="page-title">{{ selectedGroupName || '群 ' + selectedGroup }} 聊天记录</h1>
+                        <p class="page-subtitle">实时查看群内消息</p>
+                    </div>
+                    <button @click="currentView = 'chatList'" class="btn btn-primary">返回列表</button>
+                </div>
+
+                <!-- 群记忆 -->
+                <div class="card" v-if="groupMemory">
+                    <div class="card-header">
+                        <h3 class="card-title">📝 群记忆</h3>
+                        <button @click="refreshMemory" class="btn btn-secondary btn-sm">刷新</button>
+                    </div>
+                    <div class="memory-content" v-if="groupMemory && groupMemory !== '无'">
+                        <div :key="index" class="memory-item"
+                             v-for="(line, index) in groupMemory.split('\n').filter(l => l.trim())">
+                            {{ line }}
+                        </div>
+                    </div>
+                    <div class="empty-state" style="padding: 16px;" v-else>
+                        <p style="color: var(--text-secondary);">暂无记忆</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="chat-header">
+                        <div :class="{connected: wsConnected, disconnected: !wsConnected}" class="chat-status">
+                            <span class="status-dot"></span>
+                            {{ wsConnected ? '实时连接中' : '连接断开' }}
+                        </div>
+                    </div>
+
+                    <div class="chat-container" ref="chatContainer">
+                        <div :class="msg.role" :key="index"
+                             class="chat-message" v-for="(msg, index) in chatRecords">
+                            <div class="chat-role">{{ msg.role === 'user' ? '用户' : qqConfig.botName }}</div>
+                            <div class="chat-content">{{ msg.content }}</div>
+                        </div>
+                        <div class="chat-empty" v-if="chatRecords.length === 0">
+                            <div class="chat-empty-icon">💬</div>
+                            <p>暂无聊天记录</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 知识库配置 -->
+            <div v-if="currentView === 'kb'">
+                <div class="page-header">
+                    <h1 class="page-title">知识库配置</h1>
+                    <p class="page-subtitle">配置RAGFlow知识库连接参数</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">RAGFlow API 配置</h3>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">API Key</label>
+                            <input class="form-input" placeholder="ragflow-xxx" type="password"
+                                   v-model="kbConfig.apiKey">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Base URL</label>
+                            <input class="form-input" placeholder="http://127.0.0.1:9380" type="text"
+                                   v-model="kbConfig.baseUrl">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">知识库 Dataset ID</label>
+                            <input class="form-input" placeholder="Agent工具调用使用" type="text"
+                                   v-model="kbConfig.knowledgeDatasetId">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">记忆库 Dataset ID</label>
+                            <input class="form-input" placeholder="记忆存储使用" type="text"
+                                   v-model="kbConfig.memoryDatasetId">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">记忆库 Document ID</label>
+                            <input class="form-input" placeholder="记忆文档ID（可选，不填则自动获取第一个）" type="text"
+                                   v-model="kbConfig.memoryDocumentId">
+                        </div>
+                    </div>
+                    <button @click="saveKBConfig" class="btn btn-primary">保存配置</button>
+                </div>
+            </div>
+
+            <!-- 记忆配置 -->
+            <div v-if="currentView === 'memoryConfig'">
+                <div class="page-header">
+                    <h1 class="page-title">记忆配置</h1>
+                    <p class="page-subtitle">配置记忆系统参数</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">参数设置</h3>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">记忆触发间隔</label>
+                            <input class="form-input" type="number" v-model="memoryConfig.memoryTriggerCount">
+                            <p class="form-hint">每 N 条消息触发记忆生成</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">聊天记录保留数</label>
+                            <input class="form-input" type="number" v-model="memoryConfig.memoryChatRecordLimit">
+                            <p class="form-hint">保留的聊天记录数量</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">短期记忆上限</label>
+                            <input class="form-input" type="number" v-model="memoryConfig.shortTermMemoryMax">
+                            <p class="form-hint">超过此数量触发迁移</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">合并保留上限</label>
+                            <input class="form-input" type="number" v-model="memoryConfig.shortTermMemoryLimit">
+                            <p class="form-hint">合并时保留的最大条数</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">每次迁移条数</label>
+                            <input class="form-input" type="number" v-model="memoryConfig.memoryMigrateCount">
+                            <p class="form-hint">每次迁移到长期记忆的条数</p>
+                        </div>
+                    </div>
+                    <button @click="saveMemoryConfig" class="btn btn-primary">保存配置</button>
+                </div>
+            </div>
+
+            <!-- OneBot 配置 -->
+            <div v-if="currentView === 'qqConfig'">
+                <div class="page-header">
+                    <h1 class="page-title">OneBot 配置</h1>
+                    <p class="page-subtitle">配置 OneBot 协议连接参数</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">基础配置</h3>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Access Token</label>
+                            <input class="form-input" type="text" v-model="qqConfig.accessToken">
+                            <p class="form-hint">OneBot API 访问令牌</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Bot QQ 号</label>
+                            <input class="form-input" type="number" v-model="qqConfig.selfQQNumber">
+                            <p class="form-hint">机器人自身的 QQ 号</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">HTTP 服务地址</label>
+                            <input class="form-input" type="text" v-model="qqConfig.qqHttpHost">
+                            <p class="form-hint">OneBot HTTP 服务地址（如 http://127.0.0.1:3000）</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Bot 名称</label>
+                            <input class="form-input" type="text" v-model="qqConfig.botName">
+                            <p class="form-hint">机器人在群聊中的名称（默认：小喵）</p>
+                        </div>
+                    </div>
+                    <button @click="saveQQConfig" class="btn btn-primary">保存配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 消息提示 -->
+    <div :class="{error: toastError}" class="toast" v-if="toast">{{ toast }}</div>
+</div>
+
+<script>
+    const {createApp, ref, reactive, watch, onMounted, nextTick} = Vue;
+
+    createApp({
+        setup() {
+            const currentView = ref('llm');
+
+            // ===== LLM配置 =====
+            const llmNames = ref(['router', 'planner', 'executor', 'memory', 'image']);
+            const selectedLLM = ref('router');
+            const llmConfigs = reactive({});
+            const llmConfig = reactive({
+                apiKey: '', baseUrl: '', path: '', model: '',
+                maxTokens: 100, temperature: 0.7, topP: 0.9
+            });
+
+            watch(selectedLLM, async (name) => {
+                if (llmConfigs[name]) {
+                    Object.assign(llmConfig, llmConfigs[name]);
+                } else {
+                    const resp = await fetch(`/admin/api/llm-configs`);
+                    const data = await resp.json();
+                    Object.assign(llmConfigs, data);
+                    if (data[name]) Object.assign(llmConfig, data[name]);
+                }
+            });
+
+            const saveLLMConfig = async () => {
+                llmConfig.name = selectedLLM.value;
+                const resp = await fetch('/admin/api/llm-config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(llmConfig)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('LLM配置已保存');
+                    llmConfigs[selectedLLM.value] = {...llmConfig};
+                } else {
+                    showToast(data.error, true);
+                }
+            };
+
+            // ===== 提示词 =====
+            const promptKeys = ref(['executor_system', 'executor_remind']);
+            const selectedPrompt = ref('executor_system');
+            const prompts = reactive({});
+            const promptContent = ref('');
+
+            watch(selectedPrompt, async (key) => {
+                if (!prompts[key]) {
+                    const resp = await fetch('/admin/api/prompts');
+                    const data = await resp.json();
+                    Object.assign(prompts, data);
+                }
+                promptContent.value = prompts[key] || '';
+            });
+
+            const savePrompt = async () => {
+                const resp = await fetch('/admin/api/prompt', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        key: selectedPrompt.value,
+                        content: promptContent.value
+                    })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('提示词已保存');
+                    prompts[selectedPrompt.value] = promptContent.value;
+                } else {
+                    showToast(data.error, true);
+                }
+            };
+
+            // ===== 表情库 =====
+            const emojis = ref([]);
+            const newEmoji = reactive({name: '', path: ''});
+
+            const loadEmojis = async () => {
+                const resp = await fetch('/admin/api/emojis');
+                emojis.value = await resp.json();
+            };
+
+            const addEmoji = async () => {
+                if (!newEmoji.name || !newEmoji.path) {
+                    showToast('请填写名称和路径', true);
+                    return;
+                }
+                const resp = await fetch('/admin/api/emoji', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(newEmoji)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('表情已添加');
+                    newEmoji.name = '';
+                    newEmoji.path = '';
+                    loadEmojis();
+                } else {
+                    showToast(data.error, true);
+                }
+            };
+
+            const removeEmoji = async (name) => {
+                const resp = await fetch(`/admin/api/emoji/${encodeURIComponent(name)}`, {method: 'DELETE'});
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('表情已删除');
+                    loadEmojis();
+                }
+            };
+
+            // ===== 管理员 =====
+            const admins = ref([]);
+            const newAdminQQ = ref('');
+
+            const loadAdmins = async () => {
+                const resp = await fetch('/admin/api/admins');
+                admins.value = await resp.json();
+            };
+
+            const addAdmin = async () => {
+                if (!newAdminQQ.value) {
+                    showToast('请输入QQ号', true);
+                    return;
+                }
+                const resp = await fetch('/admin/api/admin', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({qq: newAdminQQ.value})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('管理员已添加');
+                    newAdminQQ.value = '';
+                    loadAdmins();
+                } else {
+                    showToast(data.error, true);
+                }
+            };
+
+            const removeAdmin = async (qq) => {
+                const resp = await fetch(`/admin/api/admin/${qq}`, {method: 'DELETE'});
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('管理员已删除');
+                    loadAdmins();
+                }
+            };
+
+            // ===== 启用群 =====
+            const enabledGroups = ref([]);
+            const newGroupId = ref('');
+
+            const loadGroups = async () => {
+                const resp = await fetch('/admin/api/groups');
+                enabledGroups.value = await resp.json();
+            };
+
+            const enableGroup = async () => {
+                if (!newGroupId.value) {
+                    showToast('请输入群号', true);
+                    return;
+                }
+                const resp = await fetch('/admin/api/group', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({groupId: newGroupId.value})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('群已启用');
+                    newGroupId.value = '';
+                    loadGroups();
+                } else {
+                    showToast(data.error, true);
+                }
+            };
+
+            const disableGroup = async (groupId) => {
+                const resp = await fetch(`/admin/api/group/${groupId}`, {method: 'DELETE'});
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('群已禁用');
+                    loadGroups();
+                }
+            };
+
+            const refreshingNames = ref(false);
+
+            const refreshAllGroupNames = async () => {
+                refreshingNames.value = true;
+                try {
+                    let updated = 0;
+                    for (const group of enabledGroups.value) {
+                        try {
+                            const resp = await fetch(`/admin/api/group/${group.groupId}/refresh-name`, {method: 'POST'});
+                            const data = await resp.json();
+                            if (data.success && data.groupName) {
+                                group.groupName = data.groupName;
+                                updated++;
+                            }
+                        } catch (e) {
+                            console.error('刷新群名称失败:', group.groupId, e);
+                        }
+                    }
+                    showToast(`已刷新 ${updated} 个群名称`);
+                } finally {
+                    refreshingNames.value = false;
+                }
+            };
+
+            // ===== 聊天记录 =====
+            const selectedGroup = ref(null);
+            const selectedGroupName = ref('');
+            const chatRecords = ref([]);
+            const groupMemory = ref('');
+            const chatContainer = ref(null);
+            const wsConnected = ref(false);
+            let ws = null;
+
+            const fetchMemory = async (groupId) => {
+                try {
+                    const resp = await fetch(`/admin/api/memory/${groupId}`);
+                    const data = await resp.json();
+                    groupMemory.value = data.memory || '';
+                } catch (e) {
+                    console.error('获取记忆失败:', e);
+                    groupMemory.value = '';
+                }
+            };
+
+            const refreshMemory = async () => {
+                if (selectedGroup.value) {
+                    await fetchMemory(selectedGroup.value);
+                    showToast('记忆已刷新');
+                }
+            };
+
+            const selectGroup = async (groupId) => {
+                selectedGroup.value = groupId;
+                currentView.value = 'chat';
+
+                // 获取群名称
+                const group = enabledGroups.value.find(g => g.groupId === groupId);
+                selectedGroupName.value = group?.groupName || '';
+
+                // 获取聊天记录
+                const resp = await fetch(`/admin/api/chat-records/${groupId}?limit=100`);
+                chatRecords.value = await resp.json();
+
+                // 获取群记忆
+                await fetchMemory(groupId);
+
+                if (ws && wsConnected.value) {
+                    ws.send(JSON.stringify({action: 'subscribe', groupId}));
+                }
+
+                await nextTick();
+                if (chatContainer.value) {
+                    chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+                }
+            };
+
+            const connectWebSocket = () => {
+                const wsUrl = `ws://${location.host}/admin/ws`;
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    wsConnected.value = true;
+                    if (selectedGroup.value) {
+                        ws.send(JSON.stringify({action: 'subscribe', groupId: selectedGroup.value}));
+                    }
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_message' && data.groupId === selectedGroup.value) {
+                        chatRecords.value.push(data.data);
+                        nextTick(() => {
+                            if (chatContainer.value) {
+                                chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+                            }
+                        });
+                    }
+                };
+
+                ws.onclose = () => {
+                    wsConnected.value = false;
+                    setTimeout(connectWebSocket, 3000);
+                };
+            };
+
+            // ===== 提示消息 =====
+            const toast = ref('');
+            const toastError = ref(false);
+            let toastTimer = null;
+
+            const showToast = (msg, isError = false) => {
+                toast.value = msg;
+                toastError.value = isError;
+                if (toastTimer) clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => {
+                    toast.value = '';
+                }, 3000);
+            };
+
+            // ===== 知识库配置 =====
+            const kbConfig = reactive({
+                apiKey: '',
+                baseUrl: '',
+                knowledgeDatasetId: '',
+                memoryDatasetId: '',
+                memoryDocumentId: ''
+            });
+
+            const loadKBConfig = async () => {
+                const resp = await fetch('/admin/api/kb-config');
+                const data = await resp.json();
+                if (data.apiKey !== undefined) {
+                    Object.assign(kbConfig, data);
+                }
+            };
+
+            const saveKBConfig = async () => {
+                const resp = await fetch('/admin/api/kb-config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(kbConfig)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('知识库配置已保存');
+                } else {
+                    showToast(data.error || '保存失败', true);
+                }
+            };
+
+            // ===== 记忆配置 =====
+            const memoryConfig = reactive({
+                memoryTriggerCount: 16,
+                memoryChatRecordLimit: 18,
+                shortTermMemoryMax: 15,
+                shortTermMemoryLimit: 20,
+                memoryMigrateCount: 5
+            });
+
+            const loadMemoryConfig = async () => {
+                const resp = await fetch('/admin/api/memory-config');
+                const data = await resp.json();
+                if (data.memoryTriggerCount !== undefined) {
+                    Object.assign(memoryConfig, data);
+                }
+            };
+
+            const saveMemoryConfig = async () => {
+                const resp = await fetch('/admin/api/memory-config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(memoryConfig)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('记忆配置已保存');
+                } else {
+                    showToast(data.error || '保存失败', true);
+                }
+            };
+
+            // ===== OneBot 配置 =====
+            const qqConfig = reactive({
+                accessToken: '',
+                selfQQNumber: 0,
+                qqHttpHost: '',
+                botName: '小喵'
+            });
+
+            const loadQQConfig = async () => {
+                const resp = await fetch('/admin/api/qq-config');
+                const data = await resp.json();
+                if (data.accessToken !== undefined) {
+                    Object.assign(qqConfig, data);
+                }
+            };
+
+            const saveQQConfig = async () => {
+                const resp = await fetch('/admin/api/qq-config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(qqConfig)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast('OneBot 配置已保存');
+                } else {
+                    showToast(data.error || '保存失败', true);
+                }
+            };
+
+            // ===== 初始化 =====
+            onMounted(async () => {
+                const llmResp = await fetch('/admin/api/llm-configs');
+                const llmData = await llmResp.json();
+                Object.assign(llmConfigs, llmData);
+                if (llmData[selectedLLM.value]) {
+                    Object.assign(llmConfig, llmData[selectedLLM.value]);
+                }
+
+                const promptResp = await fetch('/admin/api/prompts');
+                const promptData = await promptResp.json();
+                Object.assign(prompts, promptData);
+                promptContent.value = prompts[selectedPrompt.value] || '';
+
+                await loadEmojis();
+                await loadAdmins();
+                await loadGroups();
+                await loadKBConfig();
+                await loadMemoryConfig();
+                await loadQQConfig();
+                connectWebSocket();
+            });
+
+            return {
+                currentView,
+                llmNames,
+                selectedLLM,
+                llmConfig,
+                saveLLMConfig,
+                promptKeys,
+                selectedPrompt,
+                promptContent,
+                savePrompt,
+                emojis,
+                newEmoji,
+                addEmoji,
+                removeEmoji,
+                admins,
+                newAdminQQ,
+                addAdmin,
+                removeAdmin,
+                enabledGroups,
+                newGroupId,
+                enableGroup,
+                disableGroup,
+                refreshAllGroupNames,
+                refreshingNames,
+                selectGroup,
+                selectedGroup,
+                selectedGroupName,
+                chatRecords,
+                groupMemory,
+                refreshMemory,
+                chatContainer,
+                wsConnected,
+                kbConfig,
+                saveKBConfig,
+                memoryConfig,
+                saveMemoryConfig,
+                qqConfig,
+                saveQQConfig,
+                toast,
+                toastError
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
