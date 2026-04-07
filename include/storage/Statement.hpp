@@ -31,37 +31,17 @@ namespace LittleMeowBot {
     /// @param db 数据库连接
     /// @param sql SQL 语句
     /// @throws DbError 准备失败时抛出
-        Statement(sqlite3* db, std::string_view sql) : m_db(db){
-            if (sqlite3_prepare_v2(db, sql.data(), static_cast<int>(sql.size()), &m_stmt, nullptr) != SQLITE_OK) {
-                std::string err = sqlite3_errmsg(db);
-                spdlog::error("SQL 准备失败: {} - {}", sql, err);
-                throw DbError(err);
-            }
-        }
+        Statement(sqlite3* db, std::string_view sql);
 
-        ~Statement(){
-            if (m_stmt) {
-                sqlite3_finalize(m_stmt);
-            }
-        }
+        ~Statement();
 
         // 禁止拷贝
         Statement(const Statement&) = delete;
         Statement& operator=(const Statement&) = delete;
 
         // 允许移动
-        Statement(Statement&& other) noexcept
-            : m_db(std::exchange(other.m_db, nullptr))
-              , m_stmt(std::exchange(other.m_stmt, nullptr)){}
-
-        Statement& operator=(Statement&& other) noexcept{
-            if (this != &other) {
-                if (m_stmt) sqlite3_finalize(m_stmt);
-                m_db = std::exchange(other.m_db, nullptr);
-                m_stmt = std::exchange(other.m_stmt, nullptr);
-            }
-            return *this;
-        }
+        Statement(Statement&& other) noexcept;
+        Statement& operator=(Statement&& other) noexcept;
 
         // ==================== 绑定参数（使用 Concepts） ====================
 
@@ -98,25 +78,14 @@ namespace LittleMeowBot {
         // ==================== 执行 ====================
 
         /// @brief 执行一步，返回是否有数据行
-    /// @return true 表示有数据可读，false 表示执行完毕
-        [[nodiscard]] bool step() noexcept{
-            int rc = sqlite3_step(m_stmt);
-            if (rc == SQLITE_ROW) return true;
-            if (rc == SQLITE_DONE) return false;
-            spdlog::error("SQL 执行失败: {}", sqlite3_errmsg(m_db));
-            return false;
-        }
+        /// @return true 表示有数据可读，false 表示执行完毕
+        [[nodiscard]] bool step() noexcept;
 
         /// @brief 执行并忽略结果（用于 INSERT/UPDATE/DELETE）
-        void exec() noexcept{
-            sqlite3_step(m_stmt);
-        }
+        void exec() noexcept;
 
         /// @brief 重置语句，可重新绑定参数执行
-        void reset() noexcept{
-            sqlite3_reset(m_stmt);
-            sqlite3_clear_bindings(m_stmt);
-        }
+        void reset() noexcept;
 
         // ==================== 获取结果 ====================
 
@@ -162,15 +131,8 @@ namespace LittleMeowBot {
 /// @details 自动管理事务，析构时如果未提交则回滚
     class Transaction{
     public:
-        explicit Transaction(sqlite3* db) : m_db(db){
-            sqlite3_exec(m_db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
-        }
-
-        ~Transaction(){
-            if (!m_committed) {
-                sqlite3_exec(m_db, "ROLLBACK", nullptr, nullptr, nullptr);
-            }
-        }
+        explicit Transaction(sqlite3* db);
+        ~Transaction();
 
         // 禁止拷贝和移动
         Transaction(const Transaction&) = delete;
@@ -178,10 +140,7 @@ namespace LittleMeowBot {
         Transaction(Transaction&&) = delete;
         Transaction& operator=(Transaction&&) = delete;
 
-        void commit() noexcept{
-            sqlite3_exec(m_db, "COMMIT", nullptr, nullptr, nullptr);
-            m_committed = true;
-        }
+        void commit() noexcept;
 
     private:
         sqlite3* m_db;

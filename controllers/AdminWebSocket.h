@@ -15,7 +15,7 @@ namespace LittleMeowBot {
     ///          - 实时推送聊天记录
     ///          - 群订阅/取消订阅
     ///          - 连接状态管理
-    class AdminWebSocket : public drogon::WebSocketController<AdminWebSocket> {
+    class AdminWebSocket : public drogon::WebSocketController<AdminWebSocket>{
     public:
         WS_PATH_LIST_BEGIN
         WS_PATH_ADD("/admin/ws");

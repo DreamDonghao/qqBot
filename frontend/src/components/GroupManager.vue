@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 /**
  * @file GroupManager.vue
  * @brief 群管理组件 - 管理群启用状态和记忆
  */
-import { ref, onMounted, inject, type Ref } from 'vue'
-import type { ApiResponse, Group } from '../vite-env.d'
+import {inject, onMounted, ref, type Ref} from 'vue'
+import type {ApiResponse, Group} from '../vite-env.d'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 
@@ -42,8 +42,8 @@ const addGroup = async (): Promise<void> => {
   try {
     const resp = await fetch('/admin/api/group', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId: newGroupId.value })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({groupId: newGroupId.value})
     })
     const data: ApiResponse = await resp.json()
     if (data.success) {
@@ -60,7 +60,7 @@ const addGroup = async (): Promise<void> => {
 
 // 切换启用状态
 const toggleGroup = async (groupId: number): Promise<void> => {
-  const resp = await fetch(`/admin/api/group/${groupId}/toggle`, { method: 'POST' })
+  const resp = await fetch(`/admin/api/group/${groupId}/toggle`, {method: 'POST'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     const group = groups.value.find(g => g.groupId === groupId)
@@ -74,7 +74,7 @@ const toggleGroup = async (groupId: number): Promise<void> => {
 // 删除群
 const removeGroup = async (groupId: number): Promise<void> => {
   if (!confirm('确定要删除该群吗？聊天记录将保留。')) return
-  const resp = await fetch(`/admin/api/group/${groupId}`, { method: 'DELETE' })
+  const resp = await fetch(`/admin/api/group/${groupId}`, {method: 'DELETE'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     showToast!('群已删除')
@@ -84,7 +84,7 @@ const removeGroup = async (groupId: number): Promise<void> => {
 
 // 刷新所有群名称
 const refreshAllGroupNames = async (): Promise<void> => {
-  const resp = await fetch('/admin/api/groups/refresh-names', { method: 'POST' })
+  const resp = await fetch('/admin/api/groups/refresh-names', {method: 'POST'})
   const data = await resp.json()
   if (data.success) {
     await loadGroups()
@@ -122,8 +122,8 @@ const saveMemory = async (): Promise<void> => {
   try {
     const resp = await fetch(`/admin/api/memory/${selectedGroup.value}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memory: groupMemory.value })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({memory: groupMemory.value})
     })
     const data: ApiResponse = await resp.json()
     if (data.success) {
@@ -154,9 +154,9 @@ onMounted(loadGroups)
       <div style="display: flex; gap: 12px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; max-width: 300px; margin: 0;">
           <label class="form-label">群号</label>
-          <input class="form-input" placeholder="输入群号" type="number" v-model.number="newGroupId">
+          <input v-model.number="newGroupId" class="form-input" placeholder="输入群号" type="number">
         </div>
-        <button :disabled="saving" @click="addGroup" class="btn btn-success">
+        <button :disabled="saving" class="btn btn-success" @click="addGroup">
           {{ saving ? '添加中...' : '添加群' }}
         </button>
       </div>
@@ -168,49 +168,50 @@ onMounted(loadGroups)
         <h3 class="card-title">群列表</h3>
         <div style="display: flex; gap: 8px; align-items: center;">
           <span style="color: var(--text-secondary); font-size: 13px;">共 {{ groups.length }} 个群</span>
-          <button @click="refreshAllGroupNames" class="btn btn-secondary btn-sm">刷新群名</button>
+          <button class="btn btn-secondary btn-sm" @click="refreshAllGroupNames">刷新群名</button>
         </div>
       </div>
       <div class="table-container">
         <table v-if="!loading">
           <thead>
-            <tr>
-              <th style="width: 60px;">状态</th>
-              <th>群名称</th>
-              <th style="width: 120px;">群号</th>
-              <th style="width: 70px;">消息</th>
-              <th style="width: 140px;">操作</th>
-            </tr>
+          <tr>
+            <th style="width: 60px;">状态</th>
+            <th>群名称</th>
+            <th style="width: 120px;">群号</th>
+            <th style="width: 70px;">消息</th>
+            <th style="width: 140px;">操作</th>
+          </tr>
           </thead>
           <tbody>
-            <tr v-for="group in groups" :key="group.groupId" :class="{ 'row-disabled': !group.enabled }">
-              <td>
+          <tr v-for="group in groups" :key="group.groupId" :class="{ 'row-disabled': !group.enabled }">
+            <td>
                 <span
-                  class="status-badge"
-                  :class="group.enabled ? 'status-enabled' : 'status-disabled'"
-                  @click="toggleGroup(group.groupId)"
-                  :title="group.enabled ? '点击禁用' : '点击启用'"
+                    :class="group.enabled ? 'status-enabled' : 'status-disabled'"
+                    :title="group.enabled ? '点击禁用' : '点击启用'"
+                    class="status-badge"
+                    @click="toggleGroup(group.groupId)"
                 >
                   {{ group.enabled ? '启用' : '禁用' }}
                 </span>
-              </td>
-              <td>
-                <strong v-if="group.groupName">{{ group.groupName }}</strong>
-                <span v-else style="color: var(--text-light)">-</span>
-              </td>
-              <td><code>{{ group.groupId }}</code></td>
-              <td>{{ group.messageCount || 0 }}</td>
-              <td>
-                <button @click="viewMemory(group.groupId, group.groupName || '')" class="btn btn-primary btn-sm">记忆</button>
-                <button @click="removeGroup(group.groupId)" class="btn btn-danger btn-sm">删除</button>
-              </td>
-            </tr>
+            </td>
+            <td>
+              <strong v-if="group.groupName">{{ group.groupName }}</strong>
+              <span v-else style="color: var(--text-light)">-</span>
+            </td>
+            <td><code>{{ group.groupId }}</code></td>
+            <td>{{ group.messageCount || 0 }}</td>
+            <td>
+              <button class="btn btn-primary btn-sm" @click="viewMemory(group.groupId, group.groupName || '')">记忆
+              </button>
+              <button class="btn btn-danger btn-sm" @click="removeGroup(group.groupId)">删除</button>
+            </td>
+          </tr>
           </tbody>
         </table>
-        <div class="empty-state" v-if="loading">
+        <div v-if="loading" class="empty-state">
           <p>加载中...</p>
         </div>
-        <div class="empty-state" v-else-if="groups.length === 0">
+        <div v-else-if="groups.length === 0" class="empty-state">
           <div class="empty-icon">👥</div>
           <p>暂无群，请添加群号</p>
         </div>
@@ -218,25 +219,25 @@ onMounted(loadGroups)
     </div>
 
     <!-- 记忆弹窗 -->
-    <div class="modal-overlay" v-if="selectedGroup" @click.self="closeMemory">
+    <div v-if="selectedGroup" class="modal-overlay" @click.self="closeMemory">
       <div class="modal-content">
         <div class="modal-header">
           <h2>{{ selectedGroupName }} - 群记忆</h2>
-          <button @click="closeMemory" class="btn btn-secondary btn-sm">关闭</button>
+          <button class="btn btn-secondary btn-sm" @click="closeMemory">关闭</button>
         </div>
         <div class="modal-body">
           <div v-if="memoryLoading" class="memory-loading">
             <p>加载中...</p>
           </div>
           <textarea
-            v-else
-            v-model="groupMemory"
-            class="memory-editor"
-            placeholder="暂无记忆，可在此编辑..."
+              v-else
+              v-model="groupMemory"
+              class="memory-editor"
+              placeholder="暂无记忆，可在此编辑..."
           ></textarea>
         </div>
         <div class="modal-footer">
-          <button :disabled="memorySaving" @click="saveMemory" class="btn btn-primary">
+          <button :disabled="memorySaving" class="btn btn-primary" @click="saveMemory">
             {{ memorySaving ? '保存中...' : '保存' }}
           </button>
         </div>
@@ -255,20 +256,25 @@ onMounted(loadGroups)
   cursor: pointer;
   transition: all 0.2s;
 }
+
 .status-enabled {
   background: rgba(16, 185, 129, 0.15);
   color: var(--success);
 }
+
 .status-enabled:hover {
   background: rgba(16, 185, 129, 0.3);
 }
+
 .status-disabled {
   background: rgba(100, 116, 139, 0.15);
   color: var(--text-secondary);
 }
+
 .status-disabled:hover {
   background: rgba(100, 116, 139, 0.3);
 }
+
 .row-disabled {
   opacity: 0.5;
 }
@@ -286,6 +292,7 @@ onMounted(loadGroups)
   justify-content: center;
   z-index: 1000;
 }
+
 .modal-content {
   background: var(--card-bg);
   border-radius: 16px;
@@ -295,6 +302,7 @@ onMounted(loadGroups)
   display: flex;
   flex-direction: column;
 }
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -302,20 +310,24 @@ onMounted(loadGroups)
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
+
 .modal-header h2 {
   margin: 0;
   font-size: 16px;
 }
+
 .modal-body {
   flex: 1;
   padding: 16px 20px;
   overflow: hidden;
 }
+
 .memory-loading {
   text-align: center;
   padding: 48px;
   color: var(--text-light);
 }
+
 .memory-editor {
   width: 100%;
   height: 280px;
@@ -327,10 +339,12 @@ onMounted(loadGroups)
   resize: vertical;
   line-height: 1.6;
 }
+
 .memory-editor:focus {
   outline: none;
   border-color: var(--primary);
 }
+
 .modal-footer {
   padding: 12px 20px;
   border-top: 1px solid var(--border);

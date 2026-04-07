@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 /**
  * @file MemoryConfig.vue
  * @brief 记忆配置组件
  */
-import { reactive, onMounted, inject, ref, type Ref } from 'vue'
-import type { MemoryConfig, ApiResponse } from '../vite-env.d'
+import {inject, onMounted, reactive, ref, type Ref} from 'vue'
+import type {ApiResponse, MemoryConfig} from '../vite-env.d'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 
@@ -30,7 +30,7 @@ const saveMemoryConfig = async (): Promise<void> => {
   try {
     const resp = await fetch('/admin/api/memory-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(memoryConfig)
     })
     const data: ApiResponse = await resp.json()
@@ -59,35 +59,35 @@ const saveMemoryConfig = async (): Promise<void> => {
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">记忆触发间隔</label>
-          <input class="form-input" type="number" v-model="memoryConfig.memoryTriggerCount">
+          <input v-model="memoryConfig.memoryTriggerCount" class="form-input" type="number">
           <p class="form-hint">每 N 条消息触发记忆生成</p>
         </div>
         <div class="form-group">
           <label class="form-label">聊天记录保留数</label>
-          <input class="form-input" type="number" v-model="memoryConfig.memoryChatRecordLimit">
+          <input v-model="memoryConfig.memoryChatRecordLimit" class="form-input" type="number">
           <p class="form-hint">保留的聊天记录数量</p>
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">短期记忆上限</label>
-          <input class="form-input" type="number" v-model="memoryConfig.shortTermMemoryMax">
+          <input v-model="memoryConfig.shortTermMemoryMax" class="form-input" type="number">
           <p class="form-hint">超过此数量触发迁移</p>
         </div>
         <div class="form-group">
           <label class="form-label">合并保留上限</label>
-          <input class="form-input" type="number" v-model="memoryConfig.shortTermMemoryLimit">
+          <input v-model="memoryConfig.shortTermMemoryLimit" class="form-input" type="number">
           <p class="form-hint">合并时保留的最大条数</p>
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">每次迁移条数</label>
-          <input class="form-input" type="number" v-model="memoryConfig.memoryMigrateCount">
+          <input v-model="memoryConfig.memoryMigrateCount" class="form-input" type="number">
           <p class="form-hint">每次迁移到长期记忆的条数</p>
         </div>
       </div>
-      <button :disabled="saving" @click="saveMemoryConfig" class="btn btn-primary">
+      <button :disabled="saving" class="btn btn-primary" @click="saveMemoryConfig">
         {{ saving ? '保存中...' : '保存配置' }}
       </button>
     </div>

@@ -11,11 +11,47 @@ check_include_file_cxx(coroutine HAS_COROUTINE)
 
 set(CMAKE_CXX_STANDARD 23)
 
-
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(${PROJECT_NAME} main.cpp)
+# 源文件
+set(SRC_FILES
+        # storage
+        src/storage/Database.cpp
+        src/storage/Statement.cpp
+        # agent
+        src/agent/AgentTypes.cpp
+        src/agent/AgentToolManager.cpp
+        src/agent/RouterAgent.cpp
+        src/agent/PlannerAgent.cpp
+        src/agent/ExecutorAgent.cpp
+        src/agent/AgentSystem.cpp
+        # service
+        src/service/ToolRegistry.cpp
+        src/service/MemoryService.cpp
+        src/service/PromptService.cpp
+        src/service/RAGFlowClient.cpp
+        src/service/MessageService.cpp
+        src/service/WebSocketManager.cpp
+        # model
+        src/model/QQMessage.cpp
+        src/model/ChatRecordManager.cpp
+        src/model/MemoryManager.cpp
+        src/model/GroupConfigManager.cpp
+        # config
+        src/config/Config.cpp
+        # api
+        src/api/ApiClient.cpp
+        # handler
+        src/handler/CommandHandler.cpp
+        # util
+        src/util/Prompt.cpp
+        src/util/Log.cpp
+        # main
+        main.cpp
+)
+
+add_executable(${PROJECT_NAME} ${SRC_FILES})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 # 静态链接 C++ 标准库和 GCC 运行时
@@ -43,17 +79,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
 # SQLite3 - use Drogon's SQLite3
 target_link_libraries(${PROJECT_NAME} PRIVATE SQLite3_lib)
 
-
-# ##############################################################################
-
-if (CMAKE_CXX_STANDARD LESS 17)
-    message(FATAL_ERROR "c++17 or higher is required")
-elseif (CMAKE_CXX_STANDARD LESS 20)
-    message(STATUS "use c++17")
-else ()
-    message(STATUS "use c++20")
-endif ()
-
 aux_source_directory(controllers CTL_SRC)
 aux_source_directory(filters FILTER_SRC)
 aux_source_directory(plugins PLUGIN_SRC)
@@ -74,7 +99,6 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/models)
 target_sources(${PROJECT_NAME}
         PRIVATE
-        ${SRC_DIR}
         ${CTL_SRC}
         ${FILTER_SRC}
         ${PLUGIN_SRC}

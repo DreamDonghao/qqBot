@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 /**
  * @file CustomTools.vue
  * @brief 自定义工具管理组件
  */
-import { ref, reactive, computed, onMounted, inject, nextTick, type Ref } from 'vue'
-import type { ApiResponse } from '../vite-env.d'
+import {computed, inject, nextTick, onMounted, reactive, ref, type Ref} from 'vue'
+import type {ApiResponse} from '../vite-env.d'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 
@@ -89,8 +89,8 @@ const saveConfig = async (): Promise<void> => {
   try {
     const resp = await fetch('/admin/api/custom-tool-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pythonPath: pythonPath.value.trim() })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pythonPath: pythonPath.value.trim()})
     })
     const data: ApiResponse = await resp.json()
     if (data.success) {
@@ -187,13 +187,13 @@ const saveTool = async (): Promise<void> => {
   saving.value = true
   try {
     const url = isEdit.value
-      ? `/admin/api/custom-tool/${editTool.id}`
-      : '/admin/api/custom-tool'
+        ? `/admin/api/custom-tool/${editTool.id}`
+        : '/admin/api/custom-tool'
     const method = isEdit.value ? 'PUT' : 'POST'
 
     const resp = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(editTool)
     })
     const data: ApiResponse = await resp.json()
@@ -212,7 +212,7 @@ const saveTool = async (): Promise<void> => {
 const deleteTool = async (id: number): Promise<void> => {
   if (!confirm('确定删除此工具？')) return
 
-  const resp = await fetch(`/admin/api/custom-tool/${id}`, { method: 'DELETE' })
+  const resp = await fetch(`/admin/api/custom-tool/${id}`, {method: 'DELETE'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     showToast!('工具已删除')
@@ -221,7 +221,7 @@ const deleteTool = async (id: number): Promise<void> => {
 }
 
 const toggleTool = async (id: number): Promise<void> => {
-  const resp = await fetch(`/admin/api/custom-tool/${id}/toggle`, { method: 'POST' })
+  const resp = await fetch(`/admin/api/custom-tool/${id}/toggle`, {method: 'POST'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     showToast!('状态已切换')
@@ -230,7 +230,7 @@ const toggleTool = async (id: number): Promise<void> => {
 }
 
 const reloadTools = async (): Promise<void> => {
-  const resp = await fetch('/admin/api/custom-tools/reload', { method: 'POST' })
+  const resp = await fetch('/admin/api/custom-tools/reload', {method: 'POST'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     showToast!('工具已重新加载')
@@ -251,7 +251,7 @@ const testCurrentTool = async (): Promise<void> => {
 
     const resp = await fetch('/admin/api/custom-tool/test', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         executorType: editTool.executorType,
         executorConfig: editTool.executorConfig,
@@ -289,53 +289,55 @@ onMounted(() => {
       <div class="card-header">
         <h3 class="card-title">工具管理</h3>
         <div style="display: flex; gap: 8px;">
-          <button @click="showConfig = true" class="btn btn-secondary btn-sm">⚙️ Python配置</button>
-          <button @click="reloadTools" class="btn btn-primary btn-sm">重新加载</button>
-          <button @click="openAddDialog" class="btn btn-success btn-sm">添加工具</button>
+          <button class="btn btn-secondary btn-sm" @click="showConfig = true">⚙️ Python配置</button>
+          <button class="btn btn-primary btn-sm" @click="reloadTools">重新加载</button>
+          <button class="btn btn-success btn-sm" @click="openAddDialog">添加工具</button>
         </div>
       </div>
 
       <div class="table-container">
         <table v-if="!loading">
           <thead>
-            <tr>
-              <th style="width: 60px">状态</th>
-              <th style="width: 150px">工具名</th>
-              <th>描述</th>
-              <th style="width: 80px">类型</th>
-              <th style="width: 140px">操作</th>
-            </tr>
+          <tr>
+            <th style="width: 60px">状态</th>
+            <th style="width: 150px">工具名</th>
+            <th>描述</th>
+            <th style="width: 80px">类型</th>
+            <th style="width: 140px">操作</th>
+          </tr>
           </thead>
           <tbody>
-            <tr v-for="tool in tools" :key="tool.id">
-              <td>
+          <tr v-for="tool in tools" :key="tool.id">
+            <td>
                 <span :class="{ 'status-enabled': tool.enabled, 'status-disabled': !tool.enabled }">
                   {{ tool.enabled ? '启用' : '禁用' }}
                 </span>
-              </td>
-              <td><code>{{ tool.name }}</code></td>
-              <td>{{ tool.description }}</td>
-              <td>
-                <span class="tag" :class="'tag-' + tool.executorType">{{ tool.executorType }}</span>
-              </td>
-              <td style="white-space: nowrap;">
-                <button @click="toggleTool(tool.id)" class="btn btn-sm" :class="tool.enabled ? 'btn-warning' : 'btn-success'">
-                  {{ tool.enabled ? '禁用' : '启用' }}
-                </button>
-                <button @click="openEditDialog(tool)" class="btn btn-primary btn-sm" style="margin-left: 4px;">编辑</button>
-                <button @click="deleteTool(tool.id)" class="btn btn-danger btn-sm" style="margin-left: 4px;">删除</button>
-              </td>
-            </tr>
+            </td>
+            <td><code>{{ tool.name }}</code></td>
+            <td>{{ tool.description }}</td>
+            <td>
+              <span :class="'tag-' + tool.executorType" class="tag">{{ tool.executorType }}</span>
+            </td>
+            <td style="white-space: nowrap;">
+              <button :class="tool.enabled ? 'btn-warning' : 'btn-success'" class="btn btn-sm"
+                      @click="toggleTool(tool.id)">
+                {{ tool.enabled ? '禁用' : '启用' }}
+              </button>
+              <button class="btn btn-primary btn-sm" style="margin-left: 4px;" @click="openEditDialog(tool)">编辑
+              </button>
+              <button class="btn btn-danger btn-sm" style="margin-left: 4px;" @click="deleteTool(tool.id)">删除</button>
+            </td>
+          </tr>
           </tbody>
         </table>
 
-        <div class="empty-state" v-if="loading">
+        <div v-if="loading" class="empty-state">
           <p>加载中...</p>
         </div>
-        <div class="empty-state" v-else-if="tools.length === 0">
+        <div v-else-if="tools.length === 0" class="empty-state">
           <div class="empty-icon">🔧</div>
           <p>暂无自定义工具</p>
-          <button @click="openAddDialog" class="btn btn-success">添加工具</button>
+          <button class="btn btn-success" @click="openAddDialog">添加工具</button>
         </div>
       </div>
     </div>
@@ -345,12 +347,12 @@ onMounted(() => {
       <div class="dialog" style="width: 500px;">
         <div class="dialog-header">
           <h3>Python 解释器配置</h3>
-          <button @click="showConfig = false" class="dialog-close">×</button>
+          <button class="dialog-close" @click="showConfig = false">×</button>
         </div>
         <div class="dialog-body">
           <div class="form-group">
             <label class="form-label">Python 解释器路径</label>
-            <input class="form-input" v-model="pythonPath" placeholder="例如: python3 或 /home/user/myenv/bin/python">
+            <input v-model="pythonPath" class="form-input" placeholder="例如: python3 或 /home/user/myenv/bin/python">
             <small class="form-hint">
               默认使用系统 python3。如需使用第三方包，请先创建虚拟环境并在此配置路径。
             </small>
@@ -360,12 +362,13 @@ onMounted(() => {
             <pre>python3 -m venv ~/my_bot_env
 source ~/my_bot_env/bin/activate
 pip install requests numpy  # 安装需要的包</pre>
-            <p>然后配置路径为: <code>~/my_bot_env/bin/python</code> 或 <code>/home/你的用户名/my_bot_env/bin/python</code></p>
+            <p>然后配置路径为: <code>~/my_bot_env/bin/python</code> 或
+              <code>/home/你的用户名/my_bot_env/bin/python</code></p>
           </div>
         </div>
         <div class="dialog-footer">
-          <button @click="showConfig = false" class="btn btn-secondary">取消</button>
-          <button @click="saveConfig" :disabled="savingConfig" class="btn btn-success">
+          <button class="btn btn-secondary" @click="showConfig = false">取消</button>
+          <button :disabled="savingConfig" class="btn btn-success" @click="saveConfig">
             {{ savingConfig ? '保存中...' : '保存' }}
           </button>
         </div>
@@ -374,10 +377,10 @@ pip install requests numpy  # 安装需要的包</pre>
 
     <!-- 添加/编辑对话框 -->
     <div v-if="showDialog" class="dialog-overlay">
-      <div class="dialog" :style="{ width: dialogWidth }">
+      <div :style="{ width: dialogWidth }" class="dialog">
         <div class="dialog-header">
           <h3>{{ isEdit ? '编辑工具' : '添加工具' }}</h3>
-          <button @click="closeDialog" class="dialog-close">×</button>
+          <button class="dialog-close" @click="closeDialog">×</button>
         </div>
 
         <div class="dialog-body">
@@ -385,11 +388,12 @@ pip install requests numpy  # 安装需要的包</pre>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">工具名称 *</label>
-              <input class="form-input" placeholder="如: search_web, calculate" v-model="editTool.name" :disabled="isEdit">
+              <input v-model="editTool.name" :disabled="isEdit" class="form-input"
+                     placeholder="如: search_web, calculate">
             </div>
             <div class="form-group" style="width: 120px;">
               <label class="form-label">执行类型</label>
-              <select class="form-input" v-model="editTool.executorType">
+              <select v-model="editTool.executorType" class="form-input">
                 <option value="python">Python</option>
                 <option value="http">HTTP</option>
               </select>
@@ -398,25 +402,28 @@ pip install requests numpy  # 安装需要的包</pre>
 
           <div class="form-group">
             <label class="form-label">工具描述 *</label>
-            <input class="form-input" placeholder="描述工具功能，供 LLM 理解何时调用" v-model="editTool.description">
+            <input v-model="editTool.description" class="form-input" placeholder="描述工具功能，供 LLM 理解何时调用">
           </div>
 
           <div class="form-group">
             <label class="form-label">参数定义 (JSON Schema)</label>
-            <textarea class="form-input code-input auto-height" v-model="editTool.parameters" @input="autoResize"></textarea>
+            <textarea v-model="editTool.parameters" class="form-input code-input auto-height"
+                      @input="autoResize"></textarea>
           </div>
 
           <!-- Python 脚本编辑器 -->
           <div v-if="editTool.executorType === 'python'" class="form-group">
             <label class="form-label">Python 脚本</label>
-            <textarea class="form-input code-input auto-height" v-model="editTool.scriptContent" @input="autoResize" spellcheck="false"></textarea>
+            <textarea v-model="editTool.scriptContent" class="form-input code-input auto-height" spellcheck="false"
+                      @input="autoResize"></textarea>
             <small class="form-hint">参数通过 sys.argv[1] 传入 JSON 文件路径</small>
           </div>
 
           <!-- HTTP 配置 -->
           <div v-else class="form-group">
             <label class="form-label">HTTP 配置 (JSON)</label>
-            <textarea class="form-input code-input auto-height" v-model="editTool.executorConfig" @input="autoResize"></textarea>
+            <textarea v-model="editTool.executorConfig" class="form-input code-input auto-height"
+                      @input="autoResize"></textarea>
             <small class="form-hint">示例: {"url": "http://api.example.com", "method": "POST"}</small>
           </div>
 
@@ -424,14 +431,14 @@ pip install requests numpy  # 安装需要的包</pre>
           <div class="test-section">
             <div class="test-header">
               <span class="test-title">测试工具</span>
-              <button @click="testCurrentTool" :disabled="testing" class="btn btn-primary btn-sm">
+              <button :disabled="testing" class="btn btn-primary btn-sm" @click="testCurrentTool">
                 {{ testing ? '执行中...' : '执行测试' }}
               </button>
             </div>
             <div class="test-content">
               <div class="test-input">
                 <label>输入参数 (JSON)</label>
-                <textarea class="form-input code-input auto-height" v-model="testArgs" @input="autoResize"></textarea>
+                <textarea v-model="testArgs" class="form-input code-input auto-height" @input="autoResize"></textarea>
               </div>
               <div class="test-output">
                 <label>输出结果</label>
@@ -442,14 +449,14 @@ pip install requests numpy  # 安装需要的包</pre>
 
           <div class="form-group checkbox-group">
             <label>
-              <input type="checkbox" v-model="editTool.enabled"> 启用此工具
+              <input v-model="editTool.enabled" type="checkbox"> 启用此工具
             </label>
           </div>
         </div>
 
         <div class="dialog-footer">
-          <button @click="closeDialog" class="btn btn-secondary">取消</button>
-          <button @click="saveTool" :disabled="saving" class="btn btn-success">
+          <button class="btn btn-secondary" @click="closeDialog">取消</button>
+          <button :disabled="saving" class="btn btn-success" @click="saveTool">
             {{ saving ? '保存中...' : '保存' }}
           </button>
         </div>

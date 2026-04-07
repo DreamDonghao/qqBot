@@ -21,7 +21,7 @@ namespace LittleMeowBot {
     ///          - 知识库配置
     ///          - 聊天记录查看
     ///          - 记忆系统配置
-    class AdminController : public drogon::HttpController<AdminController> {
+    class AdminController : public drogon::HttpController<AdminController>{
     public:
         METHOD_LIST_BEGIN
         // LLM 配置
@@ -54,7 +54,8 @@ namespace LittleMeowBot {
         ADD_METHOD_TO(AdminController::getChatRecords, "/admin/api/chat-records/{groupId}", drogon::Get);
         ADD_METHOD_TO(AdminController::updateChatRecord, "/admin/api/chat-record/{recordId}", drogon::Put);
         ADD_METHOD_TO(AdminController::deleteChatRecord, "/admin/api/chat-record/{recordId}", drogon::Delete);
-        ADD_METHOD_TO(AdminController::clearGroupChatRecords, "/admin/api/chat-records/{groupId}/clear", drogon::Delete);
+        ADD_METHOD_TO(AdminController::clearGroupChatRecords, "/admin/api/chat-records/{groupId}/clear",
+                      drogon::Delete);
         // 群记忆
         ADD_METHOD_TO(AdminController::getGroupMemory, "/admin/api/memory/{groupId}", drogon::Get);
         ADD_METHOD_TO(AdminController::updateGroupMemory, "/admin/api/memory/{groupId}", drogon::Put);
@@ -84,14 +85,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getLLMConfigs(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 保存指定 LLM 配置
         /// @param req HTTP 请求，body 包含配置 JSON
         /// @param callback HTTP 响应回调
         drogon::Task<> saveLLMConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== 提示词 ==============
 
@@ -100,14 +101,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getPrompts(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 保存提示词
         /// @param req HTTP 请求，body 包含 key 和 content
         /// @param callback HTTP 响应回调
         drogon::Task<> savePrompt(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== 表情库 ==============
 
@@ -116,14 +117,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getEmojis(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 添加表情
         /// @param req HTTP 请求，body 包含 name 和 path
         /// @param callback HTTP 响应回调
         drogon::Task<> addEmoji(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 删除表情
         /// @param req HTTP 请求
@@ -131,7 +132,7 @@ namespace LittleMeowBot {
         /// @param name 表情名称
         drogon::Task<> removeEmoji(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& name) const;
 
         // ============== 管理员 ==============
@@ -141,14 +142,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getAdmins(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 添加管理员
         /// @param req HTTP 请求，body 包含 qq
         /// @param callback HTTP 响应回调
         drogon::Task<> addAdmin(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 删除管理员
         /// @param req HTTP 请求
@@ -156,7 +157,7 @@ namespace LittleMeowBot {
         /// @param qq 管理员 QQ 号
         drogon::Task<> removeAdmin(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& qq) const;
 
         // ============== 启用群 ==============
@@ -166,14 +167,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getGroups(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 启用群
         /// @param req HTTP 请求，body 包含 groupId
         /// @param callback HTTP 响应回调
         drogon::Task<> enableGroup(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 切换群启用/禁用状态
         /// @param req HTTP 请求
@@ -181,7 +182,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> toggleGroup(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         /// @brief 删除群（从数据库移除）
@@ -190,7 +191,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> removeGroup(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         /// @brief 刷新群名称
@@ -199,7 +200,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> refreshGroupName(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         /// @brief 批量刷新所有群名称
@@ -207,7 +208,7 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> refreshAllGroupNames(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== 知识库配置 ==============
 
@@ -216,14 +217,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getKBConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 保存知识库配置
         /// @param req HTTP 请求，body 包含配置 JSON
         /// @param callback HTTP 响应回调
         drogon::Task<> saveKBConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== 聊天记录 ==============
 
@@ -232,7 +233,7 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getChatGroups(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 获取群聊天记录
         /// @param req HTTP 请求，可选 limit 参数
@@ -240,7 +241,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> getChatRecords(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         /// @brief 更新聊天记录
@@ -249,7 +250,7 @@ namespace LittleMeowBot {
         /// @param recordId 记录ID
         drogon::Task<> updateChatRecord(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& recordId) const;
 
         /// @brief 删除聊天记录
@@ -258,7 +259,7 @@ namespace LittleMeowBot {
         /// @param recordId 记录ID
         drogon::Task<> deleteChatRecord(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& recordId) const;
 
         /// @brief 清空群的所有聊天记录
@@ -267,7 +268,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> clearGroupChatRecords(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         // ============== 群记忆 ==============
@@ -278,7 +279,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> getGroupMemory(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         /// @brief 更新群记忆
@@ -287,7 +288,7 @@ namespace LittleMeowBot {
         /// @param groupId 群号
         drogon::Task<> updateGroupMemory(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& groupId) const;
 
         // ============== 记忆配置 ==============
@@ -297,14 +298,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getMemoryConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 保存记忆系统配置
         /// @param req HTTP 请求，body 包含配置 JSON
         /// @param callback HTTP 响应回调
         drogon::Task<> saveMemoryConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== QQ Bot 配置 ==============
 
@@ -313,14 +314,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getQQConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 保存 QQ Bot 配置
         /// @param req HTTP 请求，body 包含配置 JSON
         /// @param callback HTTP 响应回调
         drogon::Task<> saveQQConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== 自定义工具 ==============
 
@@ -329,14 +330,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getCustomTools(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 添加自定义工具
         /// @param req HTTP 请求，body 包含工具配置 JSON
         /// @param callback HTTP 响应回调
         drogon::Task<> addCustomTool(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 更新自定义工具
         /// @param req HTTP 请求，body 包含工具配置 JSON
@@ -344,7 +345,7 @@ namespace LittleMeowBot {
         /// @param id 工具ID
         drogon::Task<> updateCustomTool(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& id) const;
 
         /// @brief 删除自定义工具
@@ -353,7 +354,7 @@ namespace LittleMeowBot {
         /// @param id 工具ID
         drogon::Task<> deleteCustomTool(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& id) const;
 
         /// @brief 切换自定义工具启用状态
@@ -362,7 +363,7 @@ namespace LittleMeowBot {
         /// @param id 工具ID
         drogon::Task<> toggleCustomTool(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            std::function<void(const drogon::HttpResponsePtr &)> callback,
             const std::string& id) const;
 
         /// @brief 重载自定义工具（从数据库重新加载到 ToolRegistry）
@@ -370,14 +371,14 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> reloadCustomTools(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 测试自定义工具
         /// @param req HTTP 请求，body 包含 toolId 和 testArgs
         /// @param callback HTTP 响应回调
         drogon::Task<> testCustomTool(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         // ============== 自定义工具配置 ==============
 
@@ -386,13 +387,13 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         drogon::Task<> getCustomToolConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
 
         /// @brief 保存自定义工具配置
         /// @param req HTTP 请求，body 包含 pythonPath
         /// @param callback HTTP 响应回调
         drogon::Task<> saveCustomToolConfig(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
     };
 } // namespace LittleMeowBot

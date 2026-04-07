@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 /**
  * @file PromptEditor.vue
  * @brief 提示词编辑组件
  */
-import { ref, reactive, watch, inject, type Ref } from 'vue'
-import type { ApiResponse } from '../vite-env.d'
+import {inject, reactive, ref, type Ref, watch} from 'vue'
+import type {ApiResponse} from '../vite-env.d'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 
@@ -20,15 +20,15 @@ watch(selectedPrompt, async (key: string) => {
     Object.assign(prompts, await resp.json())
   }
   promptContent.value = prompts[key] || ''
-}, { immediate: true })
+}, {immediate: true})
 
 const savePrompt = async (): Promise<void> => {
   saving.value = true
   try {
     const resp = await fetch('/admin/api/prompt', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: selectedPrompt.value, content: promptContent.value })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key: selectedPrompt.value, content: promptContent.value})
     })
     const data: ApiResponse = await resp.json()
     if (data.success) {
@@ -52,19 +52,20 @@ const savePrompt = async (): Promise<void> => {
 
     <div class="tabs">
       <button
-        v-for="key in promptKeys"
-        :key="key"
-        :class="{ active: selectedPrompt === key }"
-        @click="selectedPrompt = key"
-        class="tab"
-      >{{ key }}</button>
+          v-for="key in promptKeys"
+          :key="key"
+          :class="{ active: selectedPrompt === key }"
+          class="tab"
+          @click="selectedPrompt = key"
+      >{{ key }}
+      </button>
     </div>
 
     <div class="card prompt-card">
       <div class="card-body">
-        <textarea class="form-input" placeholder="输入提示词内容..." v-model="promptContent"></textarea>
+        <textarea v-model="promptContent" class="form-input" placeholder="输入提示词内容..."></textarea>
         <div style="margin-top: 16px;">
-          <button :disabled="saving" @click="savePrompt" class="btn btn-primary">
+          <button :disabled="saving" class="btn btn-primary" @click="savePrompt">
             {{ saving ? '保存中...' : '保存提示词' }}
           </button>
         </div>

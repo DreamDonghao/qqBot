@@ -14,7 +14,7 @@ namespace LittleMeowBot {
     ///          1. Router Agent - 判断是否需要回复
     ///          2. Planner Agent - 分析意图并规划回复策略
     ///          3. Executor Agent - 执行回复并调用工具
-    class ProcessQQMessages : public drogon::HttpController<ProcessQQMessages> {
+    class ProcessQQMessages : public drogon::HttpController<ProcessQQMessages>{
     public:
         ProcessQQMessages() = default;
         ~ProcessQQMessages() override = default;
@@ -35,6 +35,6 @@ namespace LittleMeowBot {
         ///          6. 触发记忆生成（如果达到阈值）
         drogon::Task<> receiveMessages(
             drogon::HttpRequestPtr req,
-            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+            std::function<void(const drogon::HttpResponsePtr &)> callback) const;
     };
 } // namespace LittleMeowBot

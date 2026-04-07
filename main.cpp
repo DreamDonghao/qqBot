@@ -1,3 +1,14 @@
+/// @file main.cpp
+/// @brief 程序入口 - LittleMeowBot 主程序
+/// @author donghao
+/// @date 2026-04-02
+/// @details 初始化并启动 QQ 群聊机器人服务：
+///          - 数据库初始化：SQLite 持久化存储
+///          - 配置加载：从数据库读取 LLM、知识库、QQ Bot 配置
+///          - Agent 系统初始化：注册内置工具和自定义工具
+///          - HTTP 服务启动：监听 7778 端口，提供管理界面和 API
+///          支持通过输入 "quit" 命令优雅退出
+
 #include <iostream>
 #include <drogon/drogon.h>
 #include <spdlog/spdlog.h>
@@ -26,8 +37,8 @@ int main(){
         LittleMeowBot::AgentSystem::instance().initialize();
 
         spdlog::info("系统初始化完成 - 启用群: {}, 管理员: {}",
-            database.getEnabledGroups().size(),
-            database.getAdmins().size());
+                     database.getEnabledGroups().size(),
+                     database.getAdmins().size());
 
         // ========== 启动服务 ==========
         // 启动 quit 线程
@@ -51,7 +62,6 @@ int main(){
         // ========== 清理 ==========
         database.close();
         spdlog::info("系统已关闭");
-
     } catch (const std::exception& e) {
         spdlog::critical("程序发生错误: {}", e.what());
         return 1;

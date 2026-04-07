@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 /**
  * @file LLMConfig.vue
  * @brief LLM 配置管理组件
  */
-import { ref, reactive, watch, inject, type Ref } from 'vue'
-import type { LLMConfig, ApiResponse } from '../vite-env.d'
+import {inject, reactive, ref, type Ref, watch} from 'vue'
+import type {ApiResponse, LLMConfig} from '../vite-env.d'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 
@@ -27,7 +27,7 @@ watch(selectedLLM, async (name: string) => {
   if (llmConfigs[name]) {
     Object.assign(llmConfig, llmConfigs[name])
   }
-}, { immediate: true })
+}, {immediate: true})
 
 const saveLLMConfig = async (): Promise<void> => {
   saving.value = true
@@ -35,13 +35,13 @@ const saveLLMConfig = async (): Promise<void> => {
     llmConfig.name = selectedLLM.value
     const resp = await fetch('/admin/api/llm-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(llmConfig)
     })
     const data: ApiResponse = await resp.json()
     if (data.success) {
       showToast!('LLM配置已保存')
-      llmConfigs[selectedLLM.value] = { ...llmConfig }
+      llmConfigs[selectedLLM.value] = {...llmConfig}
     } else {
       showToast!(data.error || '保存失败', true)
     }
@@ -60,50 +60,51 @@ const saveLLMConfig = async (): Promise<void> => {
 
     <div class="tabs">
       <button
-        v-for="name in llmNames"
-        :key="name"
-        :class="{ active: selectedLLM === name }"
-        @click="selectedLLM = name"
-        class="tab"
-      >{{ name }}</button>
+          v-for="name in llmNames"
+          :key="name"
+          :class="{ active: selectedLLM === name }"
+          class="tab"
+          @click="selectedLLM = name"
+      >{{ name }}
+      </button>
     </div>
 
     <div class="card">
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">API Key</label>
-          <input class="form-input" placeholder="sk-..." type="password" v-model="llmConfig.apiKey">
+          <input v-model="llmConfig.apiKey" class="form-input" placeholder="sk-..." type="password">
         </div>
         <div class="form-group">
           <label class="form-label">Base URL</label>
-          <input class="form-input" placeholder="https://api.example.com" type="text" v-model="llmConfig.baseUrl">
+          <input v-model="llmConfig.baseUrl" class="form-input" placeholder="https://api.example.com" type="text">
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Path</label>
-          <input class="form-input" placeholder="/v1/chat/completions" type="text" v-model="llmConfig.path">
+          <input v-model="llmConfig.path" class="form-input" placeholder="/v1/chat/completions" type="text">
         </div>
         <div class="form-group">
           <label class="form-label">Model</label>
-          <input class="form-input" placeholder="gpt-4" type="text" v-model="llmConfig.model">
+          <input v-model="llmConfig.model" class="form-input" placeholder="gpt-4" type="text">
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Max Tokens</label>
-          <input class="form-input" type="number" v-model.number="llmConfig.maxTokens">
+          <input v-model.number="llmConfig.maxTokens" class="form-input" type="number">
         </div>
         <div class="form-group">
           <label class="form-label">Temperature</label>
-          <input class="form-input" max="2" min="0" step="0.1" type="number" v-model.number="llmConfig.temperature">
+          <input v-model.number="llmConfig.temperature" class="form-input" max="2" min="0" step="0.1" type="number">
         </div>
         <div class="form-group">
           <label class="form-label">Top P</label>
-          <input class="form-input" max="1" min="0" step="0.1" type="number" v-model.number="llmConfig.topP">
+          <input v-model.number="llmConfig.topP" class="form-input" max="1" min="0" step="0.1" type="number">
         </div>
       </div>
-      <button :disabled="saving" @click="saveLLMConfig" class="btn btn-primary">
+      <button :disabled="saving" class="btn btn-primary" @click="saveLLMConfig">
         {{ saving ? '保存中...' : '保存配置' }}
       </button>
     </div>

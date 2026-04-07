@@ -14,8 +14,8 @@
 #include <optional>
 #include <array>
 #include <string_view>
-
 #include <fmt/core.h>
+
 namespace LittleMeowBot {
     /// @brief Router Agent 决策结果
     struct RouterDecision{
@@ -30,7 +30,7 @@ namespace LittleMeowBot {
         std::string reason; // 决策原因
 
         /// @brief Action 转字符串
-        [[nodiscard]] static constexpr std::string_view actionToString(Action a) {
+        [[nodiscard]] static constexpr std::string_view actionToString(Action a){
             constexpr std::array names = {"skip", "priority_reply", "normal_process"};
             return names[static_cast<size_t>(a)];
         }
@@ -61,13 +61,13 @@ namespace LittleMeowBot {
         std::string contextSummary; // 上下文摘要
 
         /// @brief Intent 转字符串
-        [[nodiscard]] static constexpr std::string_view intentToString(Intent i) {
+        [[nodiscard]] static constexpr std::string_view intentToString(Intent i){
             constexpr std::array names = {"question", "chat", "help", "attack", "greeting", "unknown"};
             return names[static_cast<size_t>(i)];
         }
 
         /// @brief 字符串转 Intent
-        [[nodiscard]] static constexpr Intent intentFromString(std::string_view s) {
+        [[nodiscard]] static constexpr Intent intentFromString(std::string_view s){
             if (s == "question") return Intent::QUESTION;
             if (s == "chat") return Intent::CHAT;
             if (s == "help") return Intent::HELP;
@@ -77,63 +77,10 @@ namespace LittleMeowBot {
         }
 
         /// @brief 从 JSON 字符串解析
-        static std::optional<PlanResult> fromJson(const std::string& jsonStr){
-            Json::Value root;
-            if (Json::Reader reader;
-                !reader.parse(jsonStr, root)
-            ) {
-                return std::nullopt;
-            }
-
-            PlanResult result;
-
-            // 解析 intent
-            if (root.isMember("intent")) {
-                result.intent = intentFromString(root["intent"].asString());
-            }
-
-            // 解析 strategy
-            if (root.isMember("strategy")) {
-                const auto& strat = root["strategy"];
-                if (strat.isMember("should_reply")) {
-                    result.strategy.shouldReply = strat["should_reply"].asBool();
-                }
-                if (strat.isMember("tone")) {
-                    result.strategy.tone = strat["tone"].asString();
-                }
-                if (strat.isMember("max_length")) {
-                    result.strategy.maxLength = strat["max_length"].asInt();
-                }
-                if (strat.isMember("reason")) {
-                    result.strategy.reason = strat["reason"].asString();
-                }
-            }
-
-            // 解析 context_summary
-            if (root.isMember("context_summary")) {
-                result.contextSummary = root["context_summary"].asString();
-            }
-
-            return result;
-        }
+        static std::optional<PlanResult> fromJson(const std::string& jsonStr);
 
         /// @brief 转换为 JSON
-        [[nodiscard]] Json::Value toJson() const{
-            Json::Value root;
-
-            root["intent"] = std::string(intentToString(intent));
-
-            Json::Value strategyJson;
-            strategyJson["should_reply"] = strategy.shouldReply;
-            strategyJson["tone"] = strategy.tone;
-            strategyJson["max_length"] = strategy.maxLength;
-            strategyJson["reason"] = strategy.reason;
-            root["strategy"] = strategyJson;
-
-            root["context_summary"] = contextSummary;
-
-            return root;
-        }
+        [[nodiscard]] Json::Value toJson() const;
     };
 
     /// @brief Executor Agent 回复结果（复用现有 ReplyDecision 结构）
@@ -144,16 +91,18 @@ namespace LittleMeowBot {
 }
 
 // fmt::formatter 特化，用于 spdlog 格式化
-template <> struct fmt::formatter<LittleMeowBot::RouterDecision::Action> : fmt::formatter<string_view> {
+template <>
+struct fmt::formatter<LittleMeowBot::RouterDecision::Action> : formatter<string_view>{
     template <typename FormatContext>
-    auto format(LittleMeowBot::RouterDecision::Action a, FormatContext& ctx) const {
+    auto format(LittleMeowBot::RouterDecision::Action a, FormatContext& ctx) const{
         return fmt::formatter<string_view>::format(LittleMeowBot::RouterDecision::actionToString(a), ctx);
     }
 };
 
-template <> struct fmt::formatter<LittleMeowBot::PlanResult::Intent> : fmt::formatter<string_view> {
+template <>
+struct fmt::formatter<LittleMeowBot::PlanResult::Intent> : formatter<string_view>{
     template <typename FormatContext>
-    auto format(LittleMeowBot::PlanResult::Intent i, FormatContext& ctx) const {
+    auto format(LittleMeowBot::PlanResult::Intent i, FormatContext& ctx) const{
         return fmt::formatter<string_view>::format(LittleMeowBot::PlanResult::intentToString(i), ctx);
     }
 };

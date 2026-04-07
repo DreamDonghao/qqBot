@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 /**
  * @file ChatRecords.vue
  * @brief 聊天记录组件 - 实时查看、编辑、删除
  */
-import { ref, onMounted, onUnmounted, inject, nextTick, type Ref } from 'vue'
-import type { ApiResponse, ChatMessage, QQConfig, Group } from '../vite-env.d'
+import {inject, nextTick, onMounted, onUnmounted, ref, type Ref} from 'vue'
+import type {ApiResponse, ChatMessage, Group, QQConfig} from '../vite-env.d'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 const qqConfig = inject<QQConfig>('qqConfig')
@@ -51,7 +51,7 @@ const selectGroup = async (groupId: number, groupName: string): Promise<void> =>
     // 订阅 WebSocket
     const ws = wsObj!.get()
     if (ws && wsConnected.value) {
-      ws.send(JSON.stringify({ action: 'subscribe', groupId }))
+      ws.send(JSON.stringify({action: 'subscribe', groupId}))
     }
 
     // 等待渲染完成后滚动到底部
@@ -67,7 +67,7 @@ const selectGroup = async (groupId: number, groupName: string): Promise<void> =>
 const backToList = (): void => {
   const ws = wsObj!.get()
   if (ws) {
-    ws.send(JSON.stringify({ action: 'unsubscribe' }))
+    ws.send(JSON.stringify({action: 'unsubscribe'}))
   }
   selectedGroup.value = null
   selectedGroupName.value = ''
@@ -99,8 +99,8 @@ const saveEdit = async (): Promise<void> => {
 
   const resp = await fetch(`/admin/api/chat-record/${editingId.value}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: editContent.value })
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({content: editContent.value})
   })
   const data: ApiResponse = await resp.json()
   if (data.success) {
@@ -115,7 +115,7 @@ const saveEdit = async (): Promise<void> => {
 const deleteRecord = async (recordId: number): Promise<void> => {
   if (!confirm('确定删除这条记录？')) return
 
-  const resp = await fetch(`/admin/api/chat-record/${recordId}`, { method: 'DELETE' })
+  const resp = await fetch(`/admin/api/chat-record/${recordId}`, {method: 'DELETE'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     chatRecords.value = chatRecords.value.filter(r => r.id !== recordId)
@@ -127,7 +127,7 @@ const deleteRecord = async (recordId: number): Promise<void> => {
 const clearGroupRecords = async (groupId: number): Promise<void> => {
   if (!confirm('确定清空该群的所有聊天记录？此操作不可恢复！')) return
 
-  const resp = await fetch(`/admin/api/chat-records/${groupId}/clear`, { method: 'DELETE' })
+  const resp = await fetch(`/admin/api/chat-records/${groupId}/clear`, {method: 'DELETE'})
   const data: ApiResponse = await resp.json()
   if (data.success) {
     showToast!('聊天记录已清空')
@@ -179,7 +179,7 @@ onUnmounted(restoreWebSocket)
     <div v-if="!selectedGroup" class="card">
       <div class="card-header">
         <h3 class="card-title">选择群聊</h3>
-        <div class="connection-status" :class="{ connected: wsConnected, disconnected: !wsConnected }">
+        <div :class="{ connected: wsConnected, disconnected: !wsConnected }" class="connection-status">
           <span class="dot"></span>
           {{ wsConnected ? '已连接' : '未连接' }}
         </div>
@@ -187,32 +187,37 @@ onUnmounted(restoreWebSocket)
       <div class="table-container">
         <table v-if="!loading">
           <thead>
-            <tr>
-              <th>群名称</th>
-              <th style="width: 140px;">群号</th>
-              <th style="width: 100px;">消息数</th>
-              <th style="width: 130px;">操作</th>
-            </tr>
+          <tr>
+            <th>群名称</th>
+            <th style="width: 140px;">群号</th>
+            <th style="width: 100px;">消息数</th>
+            <th style="width: 130px;">操作</th>
+          </tr>
           </thead>
           <tbody>
-            <tr v-for="group in groups" :key="group.groupId" class="group-row" @click="selectGroup(group.groupId, group.groupName || String(group.groupId))">
-              <td>
-                <strong v-if="group.groupName">{{ group.groupName }}</strong>
-                <span v-else style="color: var(--text-light)">群 {{ group.groupId }}</span>
-              </td>
-              <td><code>{{ group.groupId }}</code></td>
-              <td>{{ group.messageCount || 0 }}</td>
-              <td style="white-space: nowrap;">
-                <button class="btn btn-primary btn-sm" @click.stop="selectGroup(group.groupId, group.groupName || String(group.groupId))">进入</button>
-                <button class="btn btn-danger btn-sm" style="margin-left: 8px;" @click.stop="clearGroupRecords(group.groupId)" :disabled="!group.messageCount">清空</button>
-              </td>
-            </tr>
+          <tr v-for="group in groups" :key="group.groupId" class="group-row"
+              @click="selectGroup(group.groupId, group.groupName || String(group.groupId))">
+            <td>
+              <strong v-if="group.groupName">{{ group.groupName }}</strong>
+              <span v-else style="color: var(--text-light)">群 {{ group.groupId }}</span>
+            </td>
+            <td><code>{{ group.groupId }}</code></td>
+            <td>{{ group.messageCount || 0 }}</td>
+            <td style="white-space: nowrap;">
+              <button class="btn btn-primary btn-sm"
+                      @click.stop="selectGroup(group.groupId, group.groupName || String(group.groupId))">进入
+              </button>
+              <button :disabled="!group.messageCount" class="btn btn-danger btn-sm"
+                      style="margin-left: 8px;" @click.stop="clearGroupRecords(group.groupId)">清空
+              </button>
+            </td>
+          </tr>
           </tbody>
         </table>
-        <div class="empty-state" v-if="loading">
+        <div v-if="loading" class="empty-state">
           <p>加载中...</p>
         </div>
-        <div class="empty-state" v-else-if="groups.length === 0">
+        <div v-else-if="groups.length === 0" class="empty-state">
           <div class="empty-icon">💬</div>
           <p>暂无聊天记录</p>
         </div>
@@ -226,27 +231,27 @@ onUnmounted(restoreWebSocket)
           <h3 class="card-title">{{ selectedGroupName }}</h3>
           <span class="msg-count">{{ chatRecords.length }} 条记录</span>
         </div>
-        <button @click="backToList" class="btn btn-secondary btn-sm">返回列表</button>
+        <button class="btn btn-secondary btn-sm" @click="backToList">返回列表</button>
       </div>
 
-      <div class="chat-container" ref="chatContainer">
+      <div ref="chatContainer" class="chat-container">
         <div v-if="chatLoading" class="chat-empty">
           <p>加载中...</p>
         </div>
         <template v-else>
           <div
-            v-for="msg in chatRecords"
-            :key="msg.id"
-            class="chat-message"
-            :class="msg.role"
+              v-for="msg in chatRecords"
+              :key="msg.id"
+              :class="msg.role"
+              class="chat-message"
           >
             <!-- 普通显示 -->
             <template v-if="editingId !== msg.id">
               <div class="msg-header">
                 <span class="msg-role">{{ msg.role === 'user' ? '用户' : qqConfig!.botName }}</span>
                 <div class="msg-actions">
-                  <button @click="startEdit(msg)" class="action-btn" title="编辑">✏️</button>
-                  <button @click="deleteRecord(msg.id)" class="action-btn delete" title="删除">🗑️</button>
+                  <button class="action-btn" title="编辑" @click="startEdit(msg)">✏️</button>
+                  <button class="action-btn delete" title="删除" @click="deleteRecord(msg.id)">🗑️</button>
                 </div>
               </div>
               <div class="msg-content">{{ msg.content }}</div>
@@ -257,14 +262,14 @@ onUnmounted(restoreWebSocket)
               <div class="edit-form">
                 <textarea v-model="editContent" class="edit-textarea" rows="3"></textarea>
                 <div class="edit-actions">
-                  <button @click="saveEdit" class="btn btn-success btn-sm">保存</button>
-                  <button @click="cancelEdit" class="btn btn-secondary btn-sm">取消</button>
+                  <button class="btn btn-success btn-sm" @click="saveEdit">保存</button>
+                  <button class="btn btn-secondary btn-sm" @click="cancelEdit">取消</button>
                 </div>
               </div>
             </template>
           </div>
 
-          <div class="chat-empty" v-if="chatRecords.length === 0">
+          <div v-if="chatRecords.length === 0" class="chat-empty">
             <div class="chat-empty-icon">💬</div>
             <p>暂无聊天记录</p>
           </div>
@@ -281,14 +286,17 @@ onUnmounted(restoreWebSocket)
   gap: 8px;
   font-size: 13px;
 }
+
 .connection-status .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
+
 .connected .dot {
   background: var(--success);
 }
+
 .disconnected .dot {
   background: var(--danger);
 }
@@ -296,6 +304,7 @@ onUnmounted(restoreWebSocket)
 .group-row {
   cursor: pointer;
 }
+
 .group-row:hover td {
   background: rgba(99, 102, 241, 0.05);
 }
@@ -305,9 +314,11 @@ onUnmounted(restoreWebSocket)
   flex-direction: column;
   min-height: calc(100vh - 200px);
 }
+
 .chat-card .card-header {
   flex-shrink: 0;
 }
+
 .msg-count {
   font-size: 12px;
   color: var(--text-secondary);
@@ -329,11 +340,13 @@ onUnmounted(restoreWebSocket)
   max-width: 85%;
   position: relative;
 }
+
 .chat-message.user {
   background: #fff;
   border: 1px solid var(--border);
   margin-right: auto;
 }
+
 .chat-message.assistant {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: #fff;
@@ -346,6 +359,7 @@ onUnmounted(restoreWebSocket)
   align-items: center;
   margin-bottom: 8px;
 }
+
 .msg-role {
   font-size: 11px;
   font-weight: 600;
@@ -353,15 +367,18 @@ onUnmounted(restoreWebSocket)
   letter-spacing: 0.5px;
   opacity: 0.7;
 }
+
 .msg-actions {
   display: flex;
   gap: 4px;
   opacity: 0;
   transition: opacity 0.2s;
 }
+
 .chat-message:hover .msg-actions {
   opacity: 1;
 }
+
 .action-btn {
   background: none;
   border: none;
@@ -370,9 +387,11 @@ onUnmounted(restoreWebSocket)
   padding: 2px 4px;
   opacity: 0.6;
 }
+
 .action-btn:hover {
   opacity: 1;
 }
+
 .action-btn.delete:hover {
   opacity: 1;
   filter: brightness(0) saturate(100%) invert(27%) sepia(94%) saturate(6514%) hue-rotate(355deg) brightness(93%) contrast(127%);
@@ -388,6 +407,7 @@ onUnmounted(restoreWebSocket)
 .edit-form {
   width: 100%;
 }
+
 .edit-textarea {
   width: 100%;
   padding: 8px 12px;
@@ -397,10 +417,12 @@ onUnmounted(restoreWebSocket)
   font-family: inherit;
   resize: vertical;
 }
+
 .chat-message.assistant .edit-textarea {
-  background: rgba(255,255,255,0.9);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--text-primary);
 }
+
 .edit-actions {
   display: flex;
   gap: 8px;
@@ -412,6 +434,7 @@ onUnmounted(restoreWebSocket)
   padding: 48px;
   color: var(--text-light);
 }
+
 .chat-empty-icon {
   font-size: 48px;
   margin-bottom: 16px;

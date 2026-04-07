@@ -1,17 +1,25 @@
+/// @file Database.hpp
+/// @brief SQLite 数据库管理 - 持久化存储层
+/// @author donghao
+/// @date 2026-04-02
+/// @details 提供完整的数据库管理功能：
+///          - 群组配置：启用群列表、群名称、消息统计
+///          - 聊天记录：消息缓存、历史记录查询
+///          - 记忆系统：长期记忆存储
+///          - 配置管理：LLM配置、知识库配置、QQ Bot配置
+///          - 自定义工具：工具注册、脚本存储
+///          使用读写锁保证线程安全，支持运行时迁移
+
 #pragma once
 #include <sqlite3.h>
 #include <json/json.h>
-#include <spdlog/spdlog.h>
-#include <fmt/core.h>
 #include <shared_mutex>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <optional>
 #include <filesystem>
-#include <array>
-#include <algorithm>
-#include "Statement.hpp"
+
 
 namespace LittleMeowBot {
     /// @brief 群组配置结构
@@ -23,1027 +31,197 @@ namespace LittleMeowBot {
     /// @brief SQLite 数据库管理类
     class Database{
     public:
-        static Database& instance(){
-            static Database db;
-            return db;
-        }
+        static Database& instance();
 
         /// @brief 初始化数据库
-        void initialize(const std::string& dbPath){
-            std::unique_lock lock(m_mutex);
-
-            // 创建数据目录
-            std::filesystem::path p(dbPath);
-            if (p.has_parent_path() && !std::filesystem::exists(p.parent_path())) {
-                std::filesystem::create_directories(p.parent_path());
-            }
-
-            // 打开数据库
-            if (sqlite3_open(dbPath.c_str(), &m_db) != SQLITE_OK) {
-                spdlog::error("无法打开数据库: {}", sqlite3_errmsg(m_db));
-                return;
-            }
-
-            spdlog::info("数据库已打开: {}", dbPath);
-            createTables();
-            spdlog::info("数据库初始化完成");
-        }
+        void initialize(const std::string& dbPath);
 
         /// @brief 关闭数据库
-        void close(){
-            std::unique_lock lock(m_mutex);
-            if (m_db) {
-                sqlite3_close(m_db);
-                m_db = nullptr;
-                spdlog::info("数据库已关闭");
-            }
-        }
+        void close();
 
         // ============================================================
         //                      群组配置操作
         // ============================================================
 
-        GroupConfig getGroupConfig(uint64_t groupId) const{
-            std::shared_lock lock(m_mutex);
-            GroupConfig config;
-            Statement stmt(m_db, "SELECT all_mes_count, all_char_count FROM group_config WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            if (stmt.step()) {
-                config.allMesCount = stmt.getInt64(0);
-                config.allCharCount = stmt.getInt64(1);
-            }
-            return config;
-        }
-
-        void saveGroupConfig(const uint64_t groupId, const GroupConfig& config) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(
-                m_db, "INSERT OR REPLACE INTO group_config (group_id, all_mes_count, all_char_count) VALUES (?, ?, ?)");
-            stmt.bind(1, groupId);
-            stmt.bind(2, config.allMesCount);
-            stmt.bind(3, config.allCharCount);
-            stmt.exec();
-        }
-
-        void incrementMessageCount(uint64_t groupId, size_t charCount) const{
-            std::unique_lock lock(m_mutex);
-
-            Statement stmt(
-                m_db,
-                "UPDATE group_config SET all_mes_count = all_mes_count + 1, all_char_count = all_char_count + ? WHERE group_id = ?");
-            stmt.bind(1, charCount);
-            stmt.bind(2, groupId);
-            stmt.exec();
-
-            if (Statement::changes(m_db) == 0) {
-                GroupConfig config{1, charCount};
-                saveGroupConfig(groupId, config);
-            }
-        }
-
-        bool hasGroupConfig(uint64_t groupId) const{
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM group_config WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            return stmt.step();
-        }
+        GroupConfig getGroupConfig(uint64_t groupId) const;
+        void saveGroupConfig(uint64_t groupId, const GroupConfig& config) const;
+        void incrementMessageCount(uint64_t groupId, size_t charCount) const;
+        bool hasGroupConfig(uint64_t groupId) const;
 
         // ============================================================
         //                      聊天记录操作
         // ============================================================
 
-        void addChatRecord(uint64_t groupId, const std::string& role, const std::string& content) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "INSERT INTO chat_records (group_id, role, content) VALUES (?, ?, ?)");
-            stmt.bind(1, groupId);
-            stmt.bind(2, role);
-            stmt.bind(3, content);
-            stmt.exec();
-        }
-
-        std::vector<Json::Value> getChatRecords(uint64_t groupId, int limit = 50) const{
-            std::shared_lock lock(m_mutex);
-            std::vector<Json::Value> records;
-
-            Statement stmt(m_db, "SELECT role, content FROM chat_records WHERE group_id = ? ORDER BY id DESC LIMIT ?");
-            stmt.bind(1, groupId);
-            stmt.bind(2, limit);
-
-            while (stmt.step()) {
-                Json::Value record;
-                record["role"] = stmt.getText(0);
-                record["content"] = stmt.getText(1);
-                records.push_back(record);
-            }
-
-            std::ranges::reverse(records);
-            return records;
-        }
-
-        std::string getChatRecordsText(uint64_t groupId, int limit = 12, const std::string& botName = "小喵") const{
-            const auto records = getChatRecords(groupId, limit);
-            std::string text;
-            for (const auto& record : records) {
-                text += record["role"].asString() == "user"
-                            ? record["content"].asString() + "\n"
-                            : "{" + botName + "(我)[QQ:self]}:" + record["content"].asString() + "\n";
-            }
-            return text;
-        }
-
-        size_t getChatRecordCount(uint64_t groupId) const{
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT COUNT(*) FROM chat_records WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            return stmt.step() ? stmt.getInt64(0) : 0;
-        }
-
-        void clearOldRecords(uint64_t groupId, int keepLast = 12) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(
-                m_db,
-                "DELETE FROM chat_records WHERE group_id = ? AND id NOT IN (SELECT id FROM chat_records WHERE group_id = ? ORDER BY id DESC LIMIT ?)");
-            stmt.bind(1, groupId);
-            stmt.bind(2, groupId);
-            stmt.bind(3, keepLast);
-            stmt.exec();
-        }
+        void addChatRecord(uint64_t groupId, const std::string& role, const std::string& content) const;
+        std::vector<Json::Value> getChatRecords(uint64_t groupId, int limit = 50) const;
+        std::vector<Json::Value> getChatRecordsWithIds(uint64_t groupId, int limit = 50) const;
+        std::string getChatRecordsText(uint64_t groupId, int limit = 12, const std::string& botName = "小喵") const;
+        size_t getChatRecordCount(uint64_t groupId) const;
+        void clearOldRecords(uint64_t groupId, int keepLast = 12) const;
 
         // ============================================================
         //                      长期记忆操作
         // ============================================================
 
-        std::string getLongTermMemory(uint64_t groupId){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT memory_content FROM long_term_memory WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            return stmt.step() ? stmt.getText(0) : "";
-        }
-
-        void updateLongTermMemory(uint64_t groupId, const std::string& memory){
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "INSERT OR REPLACE INTO long_term_memory (group_id, memory_content) VALUES (?, ?)");
-            stmt.bind(1, groupId);
-            stmt.bind(2, memory);
-            stmt.exec();
-        }
+        std::string getLongTermMemory(uint64_t groupId);
+        void updateLongTermMemory(uint64_t groupId, const std::string& memory);
 
         // ============================================================
         //                      消息缓存操作
         // ============================================================
 
-        void cacheMessage(uint64_t messageId, const std::string& formattedText){
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "INSERT OR REPLACE INTO message_cache (message_id, formatted_text) VALUES (?, ?)");
-            stmt.bind(1, messageId);
-            stmt.bind(2, formattedText);
-            stmt.exec();
-        }
-
-        std::optional<std::string> getCachedMessage(uint64_t messageId){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT formatted_text FROM message_cache WHERE message_id = ?");
-            stmt.bind(1, messageId);
-            if (stmt.step()) {
-                return stmt.getText(0);
-            }
-            return std::nullopt;
-        }
+        void cacheMessage(uint64_t messageId, const std::string& formattedText);
+        std::optional<std::string> getCachedMessage(uint64_t messageId);
 
         // ============================================================
         //                      提示词操作
         // ============================================================
 
-        std::string getPrompt(const std::string& key, const std::string& defaultValue = ""){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT prompt_content FROM prompts WHERE prompt_key = ?");
-            stmt.bind(1, key);
-            return stmt.step() ? stmt.getText(0) : defaultValue;
-        }
-
-        void setPrompt(const std::string& key, const std::string& content, const std::string& description = ""){
-            std::unique_lock lock(m_mutex);
-            Statement stmt(
-                m_db, "INSERT OR REPLACE INTO prompts (prompt_key, prompt_content, description) VALUES (?, ?, ?)");
-            stmt.bind(1, key);
-            stmt.bind(2, content);
-            stmt.bind(3, description);
-            stmt.exec();
-        }
-
-        bool hasPrompt(const std::string& key){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM prompts WHERE prompt_key = ?");
-            stmt.bind(1, key);
-            return stmt.step();
-        }
-
-        std::unordered_map<std::string, std::string> getAllPrompts(){
-            std::shared_lock lock(m_mutex);
-            std::unordered_map<std::string, std::string> prompts;
-
-            Statement stmt(m_db, "SELECT prompt_key, prompt_content FROM prompts");
-            while (stmt.step()) {
-                prompts[stmt.getText(0)] = stmt.getText(1);
-            }
-            return prompts;
-        }
+        std::string getPrompt(const std::string& key, const std::string& defaultValue = "");
+        void setPrompt(const std::string& key, const std::string& content, const std::string& description = "");
+        bool hasPrompt(const std::string& key);
+        std::unordered_map<std::string, std::string> getAllPrompts();
 
         // ============================================================
         //                      启用群聊操作
         // ============================================================
 
-        bool isGroupEnabled(uint64_t groupId) const{
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT enabled FROM enabled_groups WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            return stmt.step() && stmt.getInt(0) == 1;
-        }
-
-        void enableGroup(uint64_t groupId) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "INSERT OR REPLACE INTO enabled_groups (group_id, enabled) VALUES (?, 1)");
-            stmt.bind(1, groupId);
-            stmt.exec();
-            spdlog::info("已启用群: {}", groupId);
-        }
-
-        void disableGroup(uint64_t groupId) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "DELETE FROM enabled_groups WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            stmt.exec();
-            spdlog::info("已禁用群: {}", groupId);
-        }
-
-        std::vector<uint64_t> getEnabledGroups() const{
-            std::shared_lock lock(m_mutex);
-            std::vector<uint64_t> groups;
-            Statement stmt(m_db, "SELECT group_id FROM enabled_groups WHERE enabled = 1");
-            while (stmt.step()) {
-                groups.push_back(stmt.getInt64(0));
-            }
-            return groups;
-        }
-
-        std::vector<std::pair<uint64_t, std::string>> getEnabledGroupsWithNames() const{
-            std::shared_lock lock(m_mutex);
-            std::vector<std::pair<uint64_t, std::string>> groups;
-            Statement stmt(m_db, "SELECT group_id, group_name FROM enabled_groups WHERE enabled = 1");
-            while (stmt.step()) {
-                groups.emplace_back(stmt.getInt64(0), stmt.getText(1));
-            }
-            return groups;
-        }
+        bool isGroupEnabled(uint64_t groupId) const;
+        void enableGroup(uint64_t groupId) const;
+        void disableGroup(uint64_t groupId) const;
+        std::vector<uint64_t> getEnabledGroups() const;
+        std::vector<std::pair<uint64_t, std::string>> getEnabledGroupsWithNames() const;
 
         /// @brief 获取所有有聊天记录的群（用于聊天记录页面）
-        /// @return 群ID和群名称的列表，以及消息数量
-        std::vector<std::tuple<uint64_t, std::string, int>> getGroupsWithChatRecords() const{
-            std::shared_lock lock(m_mutex);
-            std::vector<std::tuple<uint64_t, std::string, int>> groups;
-            Statement stmt(m_db,
-                "SELECT cr.group_id, COALESCE(eg.group_name, ''), COUNT(*) as cnt "
-                "FROM chat_records cr "
-                "LEFT JOIN enabled_groups eg ON cr.group_id = eg.group_id "
-                "GROUP BY cr.group_id "
-                "ORDER BY cnt DESC");
-            while (stmt.step()) {
-                groups.emplace_back(stmt.getInt64(0), stmt.getText(1), stmt.getInt(2));
-            }
-            return groups;
-        }
+        std::vector<std::tuple<uint64_t, std::string, int>> getGroupsWithChatRecords() const;
 
         /// @brief 获取所有群（包括已禁用的）
-        /// @return 群ID、群名称、启用状态、消息数量的列表
-        std::vector<std::tuple<uint64_t, std::string, bool, int>> getAllGroupsWithStatus() const{
-            std::shared_lock lock(m_mutex);
-            std::vector<std::tuple<uint64_t, std::string, bool, int>> groups;
-            Statement stmt(m_db,
-                "SELECT eg.group_id, eg.group_name, eg.enabled, "
-                "(SELECT COUNT(*) FROM chat_records WHERE group_id = eg.group_id) as cnt "
-                "FROM enabled_groups eg "
-                "ORDER BY eg.enabled DESC, cnt DESC");
-            while (stmt.step()) {
-                groups.emplace_back(stmt.getInt64(0), stmt.getText(1), stmt.getInt(2) == 1, stmt.getInt(3));
-            }
-            return groups;
-        }
+        std::vector<std::tuple<uint64_t, std::string, bool, int>> getAllGroupsWithStatus() const;
 
         /// @brief 切换群启用状态
-        void toggleGroupStatus(uint64_t groupId) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "UPDATE enabled_groups SET enabled = NOT enabled WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            stmt.exec();
-        }
+        void toggleGroupStatus(uint64_t groupId) const;
 
         /// @brief 更新聊天记录内容
-        void updateChatRecord(int recordId, const std::string& content) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "UPDATE chat_records SET content = ? WHERE id = ?");
-            stmt.bind(1, content);
-            stmt.bind(2, recordId);
-            stmt.exec();
-        }
+        void updateChatRecord(int recordId, const std::string& content) const;
 
         /// @brief 删除聊天记录
-        void deleteChatRecord(int recordId) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "DELETE FROM chat_records WHERE id = ?");
-            stmt.bind(1, recordId);
-            stmt.exec();
-        }
+        void deleteChatRecord(int recordId) const;
 
         /// @brief 清空群的所有聊天记录
-        void clearGroupChatRecords(uint64_t groupId) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "DELETE FROM chat_records WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            stmt.exec();
-            spdlog::info("已清空群 {} 的聊天记录", groupId);
-        }
+        void clearGroupChatRecords(uint64_t groupId) const;
 
-        /// @brief 更新群记忆
-        void updateLongTermMemory(uint64_t groupId, const std::string& memory) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "UPDATE long_term_memory SET memory = ? WHERE group_id = ?");
-            stmt.bind(1, memory);
-            stmt.bind(2, groupId);
-            if (stmt.step() == SQLITE_DONE && sqlite3_changes(m_db) == 0) {
-                // 如果没有更新到记录，则插入
-                Statement insertStmt(m_db, "INSERT INTO long_term_memory (group_id, memory) VALUES (?, ?)");
-                insertStmt.bind(1, groupId);
-                insertStmt.bind(2, memory);
-                insertStmt.exec();
-            }
-        }
-
-        /// @brief 获取聊天记录（带ID）
-        Json::Value getChatRecordsWithIds(uint64_t groupId, int limit = 50) const{
-            std::shared_lock lock(m_mutex);
-            Json::Value result;
-            Statement stmt(m_db,
-                "SELECT id, role, content FROM chat_records WHERE group_id = ? ORDER BY id DESC LIMIT ?");
-            stmt.bind(1, groupId);
-            stmt.bind(2, limit);
-            while (stmt.step()) {
-                Json::Value item;
-                item["id"] = stmt.getInt(0);
-                item["role"] = stmt.getText(1);
-                item["content"] = stmt.getText(2);
-                result.append(item);
-            }
-            return result;
-        }
-
-        void updateGroupName(uint64_t groupId, const std::string& name) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "UPDATE enabled_groups SET group_name = ? WHERE group_id = ?");
-            stmt.bind(1, name);
-            stmt.bind(2, groupId);
-            stmt.exec();
-            spdlog::info("更新群名称: {} -> {}", groupId, name);
-        }
-
-        std::string getGroupName(uint64_t groupId){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT group_name FROM enabled_groups WHERE group_id = ?");
-            stmt.bind(1, groupId);
-            return stmt.step() ? stmt.getText(0) : "";
-        }
+        void updateGroupName(uint64_t groupId, const std::string& name) const;
+        std::string getGroupName(uint64_t groupId);
 
         // ============================================================
         //                      管理员操作
         // ============================================================
 
-        bool isAdmin(uint64_t qqNumber){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM admins WHERE qq_number = ?");
-            stmt.bind(1, qqNumber);
-            return stmt.step();
-        }
-
-        void addAdmin(uint64_t qqNumber){
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "INSERT OR IGNORE INTO admins (qq_number) VALUES (?)");
-            stmt.bind(1, qqNumber);
-            stmt.exec();
-            spdlog::info("已添加管理员: {}", qqNumber);
-        }
-
-        void removeAdmin(uint64_t qqNumber) const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "DELETE FROM admins WHERE qq_number = ?");
-            stmt.bind(1, qqNumber);
-            stmt.exec();
-            spdlog::info("已移除管理员: {}", qqNumber);
-        }
-
-        std::vector<uint64_t> getAdmins() const{
-            std::shared_lock lock(m_mutex);
-            std::vector<uint64_t> admins;
-            Statement stmt(m_db, "SELECT qq_number FROM admins");
-            while (stmt.step()) {
-                admins.push_back(stmt.getInt64(0));
-            }
-            return admins;
-        }
+        bool isAdmin(uint64_t qqNumber);
+        void addAdmin(uint64_t qqNumber);
+        void removeAdmin(uint64_t qqNumber) const;
+        std::vector<uint64_t> getAdmins() const;
 
         // ============================================================
         //                      表情库操作
         // ============================================================
 
-        std::string getEmoji(const std::string& name){
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT path FROM emojis WHERE name = ?");
-            stmt.bind(1, name);
-            return stmt.step() ? stmt.getText(0) : "";
-        }
-
-        void addEmoji(const std::string& name, const std::string& path, const std::string& description = "") const{
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "INSERT OR REPLACE INTO emojis (name, path, description) VALUES (?, ?, ?)");
-            stmt.bind(1, name);
-            stmt.bind(2, path);
-            stmt.bind(3, description);
-            stmt.exec();
-            spdlog::info("已添加表情: {} -> {}", name, path);
-        }
-
-        void removeEmoji(const std::string& name){
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "DELETE FROM emojis WHERE name = ?");
-            stmt.bind(1, name);
-            stmt.exec();
-            spdlog::info("已删除表情: {}", name);
-        }
-
-        std::unordered_map<std::string, std::string> getAllEmojis() const{
-            std::shared_lock lock(m_mutex);
-            std::unordered_map<std::string, std::string> emojis;
-            Statement stmt(m_db, "SELECT name, path FROM emojis");
-            while (stmt.step()) {
-                emojis[stmt.getText(0)] = stmt.getText(1);
-            }
-            return emojis;
-        }
+        std::string getEmoji(const std::string& name);
+        void addEmoji(const std::string& name, const std::string& path, const std::string& description = "") const;
+        void removeEmoji(const std::string& name);
+        std::unordered_map<std::string, std::string> getAllEmojis() const;
 
         // ============================================================
         //                      LLM 配置操作
         // ============================================================
 
-        Json::Value getLLMConfig(const std::string& name) const{
-            std::shared_lock lock(m_mutex);
-            Json::Value config;
-
-            Statement stmt(
-                m_db,
-                "SELECT api_key, base_url, path, model, max_tokens, temperature, top_p FROM llm_config WHERE name = ?");
-            stmt.bind(1, name);
-
-            if (stmt.step()) {
-                config["apiKey"] = stmt.getText(0);
-                config["baseUrl"] = stmt.getText(1);
-                config["path"] = stmt.getText(2);
-                config["model"] = stmt.getText(3);
-                config["maxTokens"] = stmt.getInt(4);
-                config["temperature"] = stmt.getDouble(5);
-                config["topP"] = stmt.getDouble(6);
-            }
-            return config;
-        }
-
-        void saveLLMConfig(const std::string& name, const Json::Value& config) const{
-            std::unique_lock lock(m_mutex);
-
-            Statement stmt(
-                m_db,
-                "INSERT OR REPLACE INTO llm_config (name, api_key, base_url, path, model, max_tokens, temperature, top_p) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.bind(1, name);
-            stmt.bind(2, config["apiKey"].asString());
-            stmt.bind(3, config["baseUrl"].asString());
-            stmt.bind(4, config["path"].asString());
-            stmt.bind(5, config["model"].asString());
-            stmt.bind(6, config["maxTokens"].asInt());
-            stmt.bind(7, config["temperature"].asFloat());
-            stmt.bind(8, config["topP"].asFloat());
-            stmt.exec();
-        }
-
-        Json::Value getAllLLMConfigs(){
-            std::shared_lock lock(m_mutex);
-            Json::Value configs;
-
-            Statement stmt(
-                m_db, "SELECT name, api_key, base_url, path, model, max_tokens, temperature, top_p FROM llm_config");
-            while (stmt.step()) {
-                Json::Value cfg;
-                cfg["apiKey"] = stmt.getText(1);
-                cfg["baseUrl"] = stmt.getText(2);
-                cfg["path"] = stmt.getText(3);
-                cfg["model"] = stmt.getText(4);
-                cfg["maxTokens"] = stmt.getInt(5);
-                cfg["temperature"] = stmt.getDouble(6);
-                cfg["topP"] = stmt.getDouble(7);
-                configs[stmt.getText(0)] = cfg;
-            }
-            return configs;
-        }
+        Json::Value getLLMConfig(const std::string& name) const;
+        void saveLLMConfig(const std::string& name, const Json::Value& config) const;
+        Json::Value getAllLLMConfigs();
 
         // ============================================================
         //                      知识库配置操作
         // ============================================================
 
-        Json::Value getKBConfig() const{
-            std::shared_lock lock(m_mutex);
-            Json::Value config;
-
-            Statement stmt(
-                m_db,
-                "SELECT api_key, base_url, knowledge_dataset_id, memory_dataset_id, memory_document_id FROM kb_config WHERE id = 1");
-            if (stmt.step()) {
-                config["apiKey"] = stmt.getText(0);
-                config["baseUrl"] = stmt.getText(1);
-                config["knowledgeDatasetId"] = stmt.getText(2);
-                config["memoryDatasetId"] = stmt.getText(3);
-                config["memoryDocumentId"] = stmt.getText(4);
-            }
-            return config;
-        }
-
-        void saveKBConfig(const Json::Value& config) const{
-            std::unique_lock lock(m_mutex);
-
-            Statement stmt(
-                m_db,
-                "INSERT OR REPLACE INTO kb_config (id, api_key, base_url, knowledge_dataset_id, memory_dataset_id, memory_document_id) VALUES (1, ?, ?, ?, ?, ?)");
-            stmt.bind(1, config["apiKey"].asString());
-            stmt.bind(2, config["baseUrl"].asString());
-            stmt.bind(3, config["knowledgeDatasetId"].asString());
-            stmt.bind(4, config["memoryDatasetId"].asString());
-            stmt.bind(5, config.isMember("memoryDocumentId") ? config["memoryDocumentId"].asString() : "");
-            stmt.exec();
-            spdlog::info("知识库配置已保存");
-        }
-
-        bool hasKBConfig() const{
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM kb_config WHERE id = 1");
-            return stmt.step();
-        }
+        Json::Value getKBConfig() const;
+        void saveKBConfig(const Json::Value& config) const;
+        bool hasKBConfig() const;
 
         // ============================================================
         //                      QQ Bot 配置操作
         // ============================================================
 
-        Json::Value getQQConfig() const{
-            std::shared_lock lock(m_mutex);
-            Json::Value config;
-
-            Statement stmt(
-                m_db,
-                "SELECT access_token, self_qq_number, qq_http_host, bot_name FROM qq_config WHERE id = 1");
-            if (stmt.step()) {
-                config["accessToken"] = stmt.getText(0);
-                config["selfQQNumber"] = stmt.getInt64(1);
-                config["qqHttpHost"] = stmt.getText(2);
-                config["botName"] = stmt.getText(3);
-            }
-            return config;
-        }
-
-        void saveQQConfig(const Json::Value& config) const{
-            std::unique_lock lock(m_mutex);
-
-            Statement stmt(
-                m_db,
-                "INSERT OR REPLACE INTO qq_config (id, access_token, self_qq_number, qq_http_host, bot_name) VALUES (1, ?, ?, ?, ?)");
-            stmt.bind(1, config["accessToken"].asString());
-            stmt.bind(2, config["selfQQNumber"].asInt64());
-            stmt.bind(3, config["qqHttpHost"].asString());
-            stmt.bind(4, config.isMember("botName") ? config["botName"].asString() : "小喵");
-            stmt.exec();
-            spdlog::info("QQ Bot 配置已保存");
-        }
-
-        bool hasQQConfig() const{
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM qq_config WHERE id = 1");
-            return stmt.step();
-        }
+        Json::Value getQQConfig() const;
+        void saveQQConfig(const Json::Value& config) const;
+        bool hasQQConfig() const;
 
         // ============================================================
         //                      记忆配置操作
         // ============================================================
 
-        Json::Value getMemoryConfig() const{
-            std::shared_lock lock(m_mutex);
-            Json::Value config;
+        Json::Value getMemoryConfig() const;
+        void saveMemoryConfig(const Json::Value& config) const;
+        bool hasMemoryConfig() const;
 
-            Statement stmt(
-                m_db,
-                "SELECT memory_trigger_count, memory_chat_record_limit, short_term_memory_max, short_term_memory_limit, memory_migrate_count FROM memory_config WHERE id = 1");
-            if (stmt.step()) {
-                config["memoryTriggerCount"] = stmt.getInt(0);
-                config["memoryChatRecordLimit"] = stmt.getInt(1);
-                config["shortTermMemoryMax"] = stmt.getInt(2);
-                config["shortTermMemoryLimit"] = stmt.getInt(3);
-                config["memoryMigrateCount"] = stmt.getInt(4);
-            }
-            return config;
-        }
-
-        void saveMemoryConfig(const Json::Value& config) const{
-            std::unique_lock lock(m_mutex);
-
-            Statement stmt(
-                m_db,
-                "INSERT OR REPLACE INTO memory_config (id, memory_trigger_count, memory_chat_record_limit, short_term_memory_max, short_term_memory_limit, memory_migrate_count) VALUES (1, ?, ?, ?, ?, ?)");
-            stmt.bind(1, config["memoryTriggerCount"].asInt());
-            stmt.bind(2, config["memoryChatRecordLimit"].asInt());
-            stmt.bind(3, config["shortTermMemoryMax"].asInt());
-            stmt.bind(4, config["shortTermMemoryLimit"].asInt());
-            stmt.bind(5, config["memoryMigrateCount"].asInt());
-            stmt.exec();
-            spdlog::info("记忆配置已保存");
-        }
-
-        bool hasMemoryConfig() const{
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM memory_config WHERE id = 1");
-            return stmt.step();
-        }
-
-    // ============================================================
+        // ============================================================
         //                      自定义工具操作
         // ============================================================
 
         /// @brief 自定义工具结构
-        struct CustomTool {
+        struct CustomTool{
             int id = 0;
-            std::string name;           // 工具名，如 "search_web"
-            std::string description;    // 给LLM看的描述
-            std::string parameters;     // JSON Schema (字符串形式)
-            std::string executorType;   // "python" | "http"
+            std::string name; // 工具名，如 "search_web"
+            std::string description; // 给LLM看的描述
+            std::string parameters; // JSON Schema (字符串形式)
+            std::string executorType; // "python" | "http"
             std::string executorConfig; // JSON 配置 (http用)
-            std::string scriptContent;  // Python脚本内容 (python用)
+            std::string scriptContent; // Python脚本内容 (python用)
             bool enabled = true;
         };
 
         /// @brief 获取所有自定义工具
-        std::vector<CustomTool> getCustomTools() const {
-            std::shared_lock lock(m_mutex);
-            std::vector<CustomTool> tools;
-            Statement stmt(m_db,
-                "SELECT id, name, description, parameters, executor_type, executor_config, script_content, enabled "
-                "FROM custom_tools ORDER BY id");
-            while (stmt.step()) {
-                CustomTool tool;
-                tool.id = stmt.getInt(0);
-                tool.name = stmt.getText(1);
-                tool.description = stmt.getText(2);
-                tool.parameters = stmt.getText(3);
-                tool.executorType = stmt.getText(4);
-                tool.executorConfig = stmt.getText(5);
-                tool.scriptContent = stmt.getText(6);
-                tool.enabled = stmt.getInt(7) == 1;
-                tools.push_back(tool);
-            }
-            return tools;
-        }
+        std::vector<CustomTool> getCustomTools() const;
 
         /// @brief 获取启用的自定义工具（供 AgentToolManager 使用）
-        std::vector<CustomTool> getEnabledCustomTools() const {
-            std::shared_lock lock(m_mutex);
-            std::vector<CustomTool> tools;
-            Statement stmt(m_db,
-                "SELECT id, name, description, parameters, executor_type, executor_config, script_content "
-                "FROM custom_tools WHERE enabled = 1 ORDER BY id");
-            while (stmt.step()) {
-                CustomTool tool;
-                tool.id = stmt.getInt(0);
-                tool.name = stmt.getText(1);
-                tool.description = stmt.getText(2);
-                tool.parameters = stmt.getText(3);
-                tool.executorType = stmt.getText(4);
-                tool.executorConfig = stmt.getText(5);
-                tool.scriptContent = stmt.getText(6);
-                tool.enabled = true;
-                tools.push_back(tool);
-            }
-            return tools;
-        }
+        std::vector<CustomTool> getEnabledCustomTools() const;
 
         /// @brief 添加自定义工具
-        int addCustomTool(const CustomTool& tool) const {
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db,
-                "INSERT INTO custom_tools (name, description, parameters, executor_type, executor_config, script_content, enabled) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)");
-            stmt.bind(1, tool.name);
-            stmt.bind(2, tool.description);
-            stmt.bind(3, tool.parameters);
-            stmt.bind(4, tool.executorType);
-            stmt.bind(5, tool.executorConfig);
-            stmt.bind(6, tool.scriptContent);
-            stmt.bind(7, tool.enabled ? 1 : 0);
-            stmt.exec();
-            spdlog::info("已添加自定义工具: {}", tool.name);
-            return sqlite3_last_insert_rowid(m_db);
-        }
+        int addCustomTool(const CustomTool& tool) const;
 
         /// @brief 更新自定义工具
-        void updateCustomTool(const CustomTool& tool) const {
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db,
-                "UPDATE custom_tools SET name=?, description=?, parameters=?, executor_type=?, executor_config=?, script_content=?, enabled=? "
-                "WHERE id=?");
-            stmt.bind(1, tool.name);
-            stmt.bind(2, tool.description);
-            stmt.bind(3, tool.parameters);
-            stmt.bind(4, tool.executorType);
-            stmt.bind(5, tool.executorConfig);
-            stmt.bind(6, tool.scriptContent);
-            stmt.bind(7, tool.enabled ? 1 : 0);
-            stmt.bind(8, tool.id);
-            stmt.exec();
-            spdlog::info("已更新自定义工具: {}", tool.name);
-        }
+        void updateCustomTool(const CustomTool& tool) const;
 
         /// @brief 删除自定义工具
-        void deleteCustomTool(int id) const {
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "DELETE FROM custom_tools WHERE id=?");
-            stmt.bind(1, id);
-            stmt.exec();
-            spdlog::info("已删除自定义工具 ID: {}", id);
-        }
+        void deleteCustomTool(int id) const;
 
         /// @brief 切换自定义工具启用状态
-        void toggleCustomTool(int id) const {
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db, "UPDATE custom_tools SET enabled = NOT enabled WHERE id=?");
-            stmt.bind(1, id);
-            stmt.exec();
-        }
+        void toggleCustomTool(int id) const;
 
         /// @brief 检查工具名是否已存在
-        bool hasCustomTool(const std::string& name) const {
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT 1 FROM custom_tools WHERE name=?");
-            stmt.bind(1, name);
-            return stmt.step();
-        }
+        bool hasCustomTool(const std::string& name) const;
 
         // ============================================================
         //                      自定义工具配置
         // ============================================================
 
         /// @brief 获取自定义工具Python解释器路径
-        std::string getCustomToolPython() const {
-            std::shared_lock lock(m_mutex);
-            Statement stmt(m_db, "SELECT value FROM settings WHERE key='custom_tool_python'");
-            if (stmt.step()) {
-                return stmt.getText(0);
-            }
-            return "python3";  // 默认值
-        }
+        std::string getCustomToolPython() const;
 
         /// @brief 设置自定义工具Python解释器路径
-        void setCustomToolPython(const std::string& pythonPath) const {
-            std::unique_lock lock(m_mutex);
-            Statement stmt(m_db,
-                "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_tool_python', ?)");
-            stmt.bind(1, pythonPath);
-            stmt.exec();
-            spdlog::info("自定义工具Python路径已设置: {}", pythonPath);
-        }
+        void setCustomToolPython(const std::string& pythonPath) const;
 
     private:
         Database() = default;
-        ~Database(){ close(); }
+        ~Database();
 
         sqlite3* m_db = nullptr;
         mutable std::shared_mutex m_mutex;
 
-        void createTables(){
-            constexpr std::array tables = {
-                R"(CREATE TABLE IF NOT EXISTS group_config (
-                group_id INTEGER PRIMARY KEY,
-                all_mes_count INTEGER DEFAULT 0,
-                all_char_count INTEGER DEFAULT 0
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS chat_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id INTEGER NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS long_term_memory (
-                group_id INTEGER PRIMARY KEY,
-                memory_content TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS message_cache (
-                message_id INTEGER PRIMARY KEY,
-                formatted_text TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS prompts (
-                prompt_key TEXT PRIMARY KEY,
-                prompt_content TEXT NOT NULL,
-                description TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS enabled_groups (
-                group_id INTEGER PRIMARY KEY,
-                group_name TEXT,
-                enabled INTEGER DEFAULT 1,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS admins (
-                qq_number INTEGER PRIMARY KEY,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS emojis (
-                name TEXT PRIMARY KEY,
-                path TEXT NOT NULL,
-                description TEXT,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS llm_config (
-                name TEXT PRIMARY KEY,
-                api_key TEXT,
-                base_url TEXT,
-                path TEXT,
-                model TEXT,
-                max_tokens INTEGER DEFAULT 1024,
-                temperature REAL DEFAULT 0.7,
-                top_p REAL DEFAULT 0.9
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS kb_config (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                api_key TEXT,
-                base_url TEXT,
-                knowledge_dataset_id TEXT,
-                memory_dataset_id TEXT,
-                memory_document_id TEXT
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS memory_config (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                memory_trigger_count INTEGER DEFAULT 16,
-                memory_chat_record_limit INTEGER DEFAULT 18,
-                short_term_memory_max INTEGER DEFAULT 15,
-                short_term_memory_limit INTEGER DEFAULT 20,
-                memory_migrate_count INTEGER DEFAULT 5
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS qq_config (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                access_token TEXT,
-                self_qq_number INTEGER,
-                qq_http_host TEXT,
-                bot_name TEXT DEFAULT '小喵'
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS custom_tools (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                description TEXT NOT NULL,
-                parameters TEXT,
-                executor_type TEXT NOT NULL CHECK(executor_type IN ('python', 'http')),
-                executor_config TEXT,
-                script_content TEXT,
-                enabled INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ))",
-                R"(CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            ))"
-            };
-
-            for (const auto* sql : tables) {
-                auto* errMsg = static_cast<char*>(nullptr);
-                if (sqlite3_exec(m_db, sql, nullptr, nullptr, &errMsg) != SQLITE_OK) {
-                    spdlog::error("创建表失败: {}", errMsg);
-                    sqlite3_free(errMsg);
-                }
-            }
-
-            // 创建索引
-            constexpr std::array indexes = {
-                "CREATE INDEX IF NOT EXISTS idx_chat_records_group ON chat_records(group_id)",
-                "CREATE INDEX IF NOT EXISTS idx_chat_records_time ON chat_records(group_id, created_at DESC)"
-            };
-            for (const auto* sql : indexes) {
-                sqlite3_exec(m_db, sql, nullptr, nullptr, nullptr);
-            }
-
-            // 数据库迁移
-            migrateDatabase();
-
-            initDefaultLLMConfigs();
-            initDefaultKBConfig();
-            initDefaultMemoryConfig();
-            initDefaultQQConfig();
-        }
-
-        /// @brief 数据库迁移 - 添加新列
-        void migrateDatabase() const{
-            // 检查 custom_tools 表是否有 script_content 列
-            bool hasScriptContent = false;
-            auto callback = [](void* data, int argc, char** argv, char** colNames) -> int {
-                for (int i = 0; i < argc; i++) {
-                    if (argv[i] && std::string(argv[i]) == "script_content") {
-                        *static_cast<bool*>(data) = true;
-                        break;
-                    }
-                }
-                return 0;
-            };
-            sqlite3_exec(m_db, "PRAGMA table_info(custom_tools)", callback, &hasScriptContent, nullptr);
-
-            if (!hasScriptContent) {
-                spdlog::info("数据库迁移: 添加 script_content 列");
-                sqlite3_exec(m_db, "ALTER TABLE custom_tools ADD COLUMN script_content TEXT", nullptr, nullptr, nullptr);
-            }
-        }
-
-        void initDefaultLLMConfigs() const{
-            Statement checkStmt(m_db, "SELECT COUNT(*) FROM llm_config");
-            if (checkStmt.step() && checkStmt.getInt(0) > 0) return;
-
-            struct DefaultConfig{
-                const char *name, *apiKey, *baseUrl, *path, *model;
-                int maxTokens;
-                float temperature, topP;
-            };
-
-            constexpr DefaultConfig defaults[] = {
-                {"router", "", "http://127.0.0.1:3001", "/v1/chat/completions", "deepseek-chat", 100, 0.3f, 0.9f},
-                {"planner", "", "http://127.0.0.1:3001", "/v1/chat/completions", "deepseek-chat", 300, 0.5f, 0.9f},
-                {"executor", "", "http://127.0.0.1:3001", "/v1/chat/completions", "deepseek-chat", 150, 0.7f, 0.9f},
-                {"memory", "", "https://api.edgefn.net", "/v1/chat/completions", "DeepSeek-V3", 2048, 0.7f, 0.9f},
-                {
-                    "image", "", "https://dashscope.aliyuncs.com", "/compatible-mode/v1/chat/completions",
-                    "qwen-vl-plus", 1024, 0.7f, 0.9f
-                }
-            };
-
-            for (const auto& [name, apiKey, baseUrl, path, model, maxTokens, temperature, topP] : defaults) {
-                Statement stmt(
-                    m_db,
-                    "INSERT INTO llm_config (name, api_key, base_url, path, model, max_tokens, temperature, top_p) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                stmt.bind(1, name);
-                stmt.bind(2, apiKey);
-                stmt.bind(3, baseUrl);
-                stmt.bind(4, path);
-                stmt.bind(5, model);
-                stmt.bind(6, maxTokens);
-                stmt.bind(7, temperature);
-                stmt.bind(8, topP);
-                stmt.exec();
-            }
-            spdlog::info("已初始化默认 LLM 配置");
-        }
-
-        void initDefaultKBConfig() const{
-            if (Statement checkStmt(m_db, "SELECT COUNT(*) FROM kb_config");
-                checkStmt.step() && checkStmt.getInt(0) > 0) {
-                return;
-            }
-
-            Statement stmt(
-                m_db,
-                "INSERT INTO kb_config (id, api_key, base_url, knowledge_dataset_id, memory_dataset_id) VALUES (1, '', '', '', '')");
-            stmt.exec();
-            spdlog::info("已初始化默认知识库配置");
-        }
-
-        void initDefaultMemoryConfig() const{
-            if (Statement checkStmt(m_db, "SELECT COUNT(*) FROM memory_config");
-                checkStmt.step() && checkStmt.getInt(0) > 0) {
-                return;
-            }
-
-            Statement stmt(
-                m_db,
-                "INSERT INTO memory_config (id, memory_trigger_count, memory_chat_record_limit, short_term_memory_max, short_term_memory_limit, memory_migrate_count) VALUES (1, 16, 18, 15, 20, 5)");
-            stmt.exec();
-            spdlog::info("已初始化默认记忆配置");
-        }
-
-        void initDefaultQQConfig() const{
-            if (Statement checkStmt(m_db, "SELECT COUNT(*) FROM qq_config");
-                checkStmt.step() && checkStmt.getInt(0) > 0) {
-                return;
-            }
-
-            Statement stmt(
-                m_db,
-                "INSERT INTO qq_config (id, access_token, self_qq_number, qq_http_host, bot_name) VALUES (1, '', 0, 'http://127.0.0.1:3000', '小喵')");
-            stmt.exec();
-            spdlog::info("已初始化默认 QQ Bot 配置");
-        }
+        void createTables();
+        void migrateDatabase() const;
+        void initDefaultLLMConfigs() const;
+        void initDefaultKBConfig() const;
+        void initDefaultMemoryConfig() const;
+        void initDefaultQQConfig() const;
     };
 } // namespace LittleMeowBot
