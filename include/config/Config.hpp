@@ -112,7 +112,7 @@ namespace LittleMeowBot {
         /// @param apiConfig API 配置对象引用
         /// @param modelParams 模型参数对象指针（可选）
         template<typename ApiCfg, typename ParamsCfg = LLMModelParams*>
-        void loadLLMConfig(std::string_view name, ApiCfg& apiConfig, ParamsCfg modelParams = nullptr) {
+        void loadLLMConfig(const std::string_view name, ApiCfg& apiConfig, ParamsCfg modelParams = nullptr) {
             auto cfg = Database::instance().getLLMConfig(std::string(name));
             if (cfg.isNull()) return;
 

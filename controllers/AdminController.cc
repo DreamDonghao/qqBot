@@ -1,5 +1,6 @@
 #include "AdminController.h"
 #include <model/QQMessage.hpp>
+#include <agent/AgentToolManager.hpp>
 #include <spdlog/spdlog.h>
 
 using namespace LittleMeowBot;
@@ -42,34 +43,34 @@ Task<> AdminController::saveLLMConfig(
         config.routerParams.temperature = (*json).get("temperature", 0.7f).asFloat();
         config.routerParams.topP = (*json).get("topP", 0.9f).asFloat();
     } else if (name == "planner") {
-        config.planner.apiKey = (*json).get("apiKey", "").asString();
-        config.planner.baseUrl = (*json).get("baseUrl", "").asString();
-        config.planner.path = (*json).get("path", "").asString();
-        config.planner.model = (*json).get("model", "").asString();
-        config.plannerParams.maxTokens = (*json).get("maxTokens", 100).asInt();
-        config.plannerParams.temperature = (*json).get("temperature", 0.7f).asFloat();
-        config.plannerParams.topP = (*json).get("topP", 0.9f).asFloat();
+        config.planner.apiKey = json->get("apiKey", "").asString();
+        config.planner.baseUrl = json->get("baseUrl", "").asString();
+        config.planner.path = json->get("path", "").asString();
+        config.planner.model = json->get("model", "").asString();
+        config.plannerParams.maxTokens = json->get("maxTokens", 100).asInt();
+        config.plannerParams.temperature = json->get("temperature", 0.7f).asFloat();
+        config.plannerParams.topP = json->get("topP", 0.9f).asFloat();
     } else if (name == "executor") {
         config.executor.apiKey = (*json).get("apiKey", "").asString();
-        config.executor.baseUrl = (*json).get("baseUrl", "").asString();
-        config.executor.path = (*json).get("path", "").asString();
-        config.executor.model = (*json).get("model", "").asString();
-        config.executorParams.maxTokens = (*json).get("maxTokens", 100).asInt();
-        config.executorParams.temperature = (*json).get("temperature", 0.7f).asFloat();
-        config.executorParams.topP = (*json).get("topP", 0.9f).asFloat();
+        config.executor.baseUrl = json->get("baseUrl", "").asString();
+        config.executor.path = json->get("path", "").asString();
+        config.executor.model = json->get("model", "").asString();
+        config.executorParams.maxTokens = json->get("maxTokens", 100).asInt();
+        config.executorParams.temperature = json->get("temperature", 0.7f).asFloat();
+        config.executorParams.topP = json->get("topP", 0.9f).asFloat();
     } else if (name == "memory") {
-        config.memory.apiKey = (*json).get("apiKey", "").asString();
-        config.memory.baseUrl = (*json).get("baseUrl", "").asString();
-        config.memory.path = (*json).get("path", "").asString();
-        config.memory.model = (*json).get("model", "").asString();
-        config.memoryParams.maxTokens = (*json).get("maxTokens", 100).asInt();
-        config.memoryParams.temperature = (*json).get("temperature", 0.7f).asFloat();
-        config.memoryParams.topP = (*json).get("topP", 0.9f).asFloat();
+        config.memory.apiKey = json->get("apiKey", "").asString();
+        config.memory.baseUrl = json->get("baseUrl", "").asString();
+        config.memory.path = json->get("path", "").asString();
+        config.memory.model = json->get("model", "").asString();
+        config.memoryParams.maxTokens = json->get("maxTokens", 100).asInt();
+        config.memoryParams.temperature = json->get("temperature", 0.7f).asFloat();
+        config.memoryParams.topP = json->get("topP", 0.9f).asFloat();
     } else if (name == "image") {
-        config.image.apiKey = (*json).get("apiKey", "").asString();
-        config.image.baseUrl = (*json).get("baseUrl", "").asString();
-        config.image.path = (*json).get("path", "").asString();
-        config.image.model = (*json).get("model", "").asString();
+        config.image.apiKey = json->get("apiKey", "").asString();
+        config.image.baseUrl = json->get("baseUrl", "").asString();
+        config.image.path = json->get("path", "").asString();
+        config.image.model = json->get("model", "").asString();
     }
 
     Json::Value resp;
@@ -239,14 +240,15 @@ Task<> AdminController::getGroups(
     HttpRequestPtr req,
     std::function<void(const HttpResponsePtr &)> callback
 ) const{
-    auto groups = Database::instance().getEnabledGroupsWithNames();
+    auto groups = Database::instance().getAllGroupsWithStatus();
 
     Json::Value result;
-    for (const auto& [groupId, groupName] : groups) {
+    for (const auto& [groupId, groupName, enabled, messageCount] : groups) {
         Json::Value group;
         group["groupId"] = static_cast<Json::UInt64>(groupId);
         group["groupName"] = groupName;
-        group["messageCount"] = static_cast<Json::Int>(Database::instance().getChatRecordCount(groupId));
+        group["enabled"] = enabled;
+        group["messageCount"] = messageCount;
         result.append(group);
     }
     callback(HttpResponse::newHttpJsonResponse(result));
@@ -279,7 +281,22 @@ Task<> AdminController::enableGroup(
     co_return;
 }
 
-Task<> AdminController::disableGroup(
+Task<> AdminController::toggleGroup(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& groupId
+) const{
+    uint64_t gid = std::stoull(groupId);
+    Database::instance().toggleGroupStatus(gid);
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "群状态已切换";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::removeGroup(
     HttpRequestPtr req,
     std::function<void(const HttpResponsePtr &)> callback,
     const std::string& groupId
@@ -289,7 +306,7 @@ Task<> AdminController::disableGroup(
 
     Json::Value resp;
     resp["success"] = true;
-    resp["message"] = "群已禁用";
+    resp["message"] = "群已删除";
     callback(HttpResponse::newHttpJsonResponse(resp));
     co_return;
 }
@@ -309,7 +326,42 @@ Task<> AdminController::refreshGroupName(
     co_return;
 }
 
+Task<> AdminController::refreshAllGroupNames(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    auto groups = Database::instance().getAllGroupsWithStatus();
+
+    for (const auto& [groupId, groupName, enabled, messageCount] : groups) {
+        co_await MessageService::instance().fetchAndUpdateGroupName(groupId);
+    }
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "所有群名称已刷新";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
 // ==================== 聊天记录 ====================
+
+Task<> AdminController::getChatGroups(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    auto groups = Database::instance().getGroupsWithChatRecords();
+
+    Json::Value result;
+    for (const auto& [groupId, groupName, messageCount] : groups) {
+        Json::Value group;
+        group["groupId"] = static_cast<Json::UInt64>(groupId);
+        group["groupName"] = groupName;
+        group["messageCount"] = messageCount;
+        result.append(group);
+    }
+    callback(HttpResponse::newHttpJsonResponse(result));
+    co_return;
+}
 
 Task<> AdminController::getChatRecords(
     HttpRequestPtr req,
@@ -324,16 +376,70 @@ Task<> AdminController::getChatRecords(
         limit = std::stoi(req->getParameter("limit"));
     }
 
-    auto records = Database::instance().getChatRecords(gid, limit);
+    // 返回带ID的记录，支持编辑
+    auto result = Database::instance().getChatRecordsWithIds(gid, limit);
 
-    Json::Value result;
-    for (const auto& record : records) {
-        Json::Value item;
-        item["role"] = record["role"].asString();
-        item["content"] = record["content"].asString();
-        result.append(item);
+    // 反转顺序，最新的在底部
+    Json::Value reversed;
+    for (int i = result.size() - 1; i >= 0; i--) {
+        reversed.append(result[i]);
     }
-    callback(HttpResponse::newHttpJsonResponse(result));
+
+    callback(HttpResponse::newHttpJsonResponse(reversed));
+    co_return;
+}
+
+Task<> AdminController::updateChatRecord(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& recordId
+) const{
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("content")) {
+        Json::Value err;
+        err["error"] = "缺少content字段";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    int id = std::stoi(recordId);
+    std::string content = (*json)["content"].asString();
+    Database::instance().updateChatRecord(id, content);
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "聊天记录已更新";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::deleteChatRecord(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& recordId
+) const{
+    int id = std::stoi(recordId);
+    Database::instance().deleteChatRecord(id);
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "聊天记录已删除";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::clearGroupChatRecords(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& groupId
+) const{
+    uint64_t gid = std::stoull(groupId);
+    Database::instance().clearGroupChatRecords(gid);
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "聊天记录已清空";
+    callback(HttpResponse::newHttpJsonResponse(resp));
     co_return;
 }
 
@@ -390,6 +496,30 @@ Task<> AdminController::getGroupMemory(
     Json::Value resp;
     resp["groupId"] = static_cast<Json::UInt64>(gid);
     resp["memory"] = memory;
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::updateGroupMemory(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& groupId
+) const{
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("memory")) {
+        Json::Value err;
+        err["error"] = "缺少memory字段";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    uint64_t gid = std::stoull(groupId);
+    std::string memory = (*json)["memory"].asString();
+    Database::instance().updateLongTermMemory(gid, memory);
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "记忆已更新";
     callback(HttpResponse::newHttpJsonResponse(resp));
     co_return;
 }
@@ -472,6 +602,256 @@ Task<> AdminController::saveQQConfig(
     Json::Value resp;
     resp["success"] = true;
     resp["message"] = "QQ Bot 配置已保存";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+// ==================== 自定义工具 ====================
+
+Task<> AdminController::getCustomTools(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    auto tools = Database::instance().getCustomTools();
+
+    Json::Value result(Json::arrayValue);
+    for (const auto& tool : tools) {
+        Json::Value item;
+        item["id"] = tool.id;
+        item["name"] = tool.name;
+        item["description"] = tool.description;
+        item["parameters"] = tool.parameters;
+        item["executorType"] = tool.executorType;
+        item["executorConfig"] = tool.executorConfig;
+        item["scriptContent"] = tool.scriptContent;
+        item["enabled"] = tool.enabled;
+        result.append(item);
+    }
+    callback(HttpResponse::newHttpJsonResponse(result));
+    co_return;
+}
+
+Task<> AdminController::addCustomTool(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("name") || !json->isMember("executorType") || !json->isMember("executorConfig")) {
+        Json::Value err;
+        err["error"] = "缺少必要字段 (name, executorType, executorConfig)";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    std::string name = (*json)["name"].asString();
+
+    // 检查是否与内置工具名冲突
+    auto& registry = ToolRegistry::instance();
+    if (registry.hasTool(name)) {
+        Json::Value err;
+        err["error"] = "工具名 '" + name + "' 已存在（内置工具或自定义工具）";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    Database::CustomTool tool;
+    tool.name = name;
+    tool.description = (*json).get("description", "").asString();
+    tool.parameters = (*json).get("parameters", "").asString();
+    tool.executorType = (*json)["executorType"].asString();
+    tool.executorConfig = (*json).get("executorConfig", "").asString();
+    tool.scriptContent = (*json).get("scriptContent", "").asString();
+    tool.enabled = (*json).get("enabled", true).asBool();
+
+    int id = Database::instance().addCustomTool(tool);
+
+    // 立即注册到 ToolRegistry
+    AgentToolManager::instance().registerCustomTools();
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "自定义工具已添加";
+    resp["id"] = id;
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::updateCustomTool(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& id
+) const{
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("name") || !json->isMember("executorType") || !json->isMember("executorConfig")) {
+        Json::Value err;
+        err["error"] = "缺少必要字段 (name, executorType, executorConfig)";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    Database::CustomTool tool;
+    tool.id = std::stoi(id);
+    tool.name = (*json)["name"].asString();
+    tool.description = (*json).get("description", "").asString();
+    tool.parameters = (*json).get("parameters", "").asString();
+    tool.executorType = (*json)["executorType"].asString();
+    tool.executorConfig = (*json).get("executorConfig", "").asString();
+    tool.scriptContent = (*json).get("scriptContent", "").asString();
+    tool.enabled = (*json).get("enabled", true).asBool();
+
+    Database::instance().updateCustomTool(tool);
+
+    // 重新注册工具
+    AgentToolManager::instance().registerCustomTools();
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "自定义工具已更新";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::deleteCustomTool(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& id
+) const{
+    int toolId = std::stoi(id);
+    Database::instance().deleteCustomTool(toolId);
+
+    // 重新注册工具（移除已删除的）
+    AgentToolManager::instance().registerCustomTools();
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "自定义工具已删除";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::toggleCustomTool(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback,
+    const std::string& id
+) const{
+    int toolId = std::stoi(id);
+    Database::instance().toggleCustomTool(toolId);
+
+    // 重新注册工具
+    AgentToolManager::instance().registerCustomTools();
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "工具状态已切换";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::reloadCustomTools(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    AgentToolManager::instance().registerCustomTools();
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "自定义工具已重新加载";
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::testCustomTool(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    auto json = req->getJsonObject();
+    if (!json) {
+        Json::Value err;
+        err["success"] = false;
+        err["error"] = "缺少请求数据";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    // 支持两种方式：
+    // 1. 传入 toolId 测试已保存的工具
+    // 2. 传入工具定义直接测试（未保存）
+    std::string executorType;
+    std::string executorConfig;
+    std::string scriptContent;
+    Json::Value testArgs;
+
+    if (json->isMember("toolId")) {
+        // 从数据库加载工具
+        int toolId = (*json)["toolId"].asInt();
+        auto tools = Database::instance().getCustomTools();
+        auto it = std::find_if(tools.begin(), tools.end(), [toolId](const auto& t) { return t.id == toolId; });
+        if (it == tools.end()) {
+            Json::Value err;
+            err["success"] = false;
+            err["error"] = "工具不存在";
+            callback(HttpResponse::newHttpJsonResponse(err));
+            co_return;
+        }
+        executorType = it->executorType;
+        executorConfig = it->executorConfig;
+        scriptContent = it->scriptContent;
+        testArgs = json->isMember("args") ? (*json)["args"] : Json::Value();
+    } else {
+        // 直接使用传入的定义
+        executorType = (*json).get("executorType", "python").asString();
+        executorConfig = (*json).get("executorConfig", "").asString();
+        scriptContent = (*json).get("scriptContent", "").asString();
+        testArgs = json->isMember("args") ? (*json)["args"] : Json::Value();
+    }
+
+    std::string result;
+    if (executorType == "python") {
+        result = co_await AgentToolManager::executePythonTool(scriptContent, testArgs);
+    } else if (executorType == "http") {
+        result = co_await AgentToolManager::executeHttpTool(executorConfig, testArgs);
+    } else {
+        result = "未知的执行类型";
+    }
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["result"] = result;
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+// ==================== 自定义工具配置 ====================
+
+Task<> AdminController::getCustomToolConfig(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    Json::Value resp;
+    resp["pythonPath"] = Database::instance().getCustomToolPython();
+    callback(HttpResponse::newHttpJsonResponse(resp));
+    co_return;
+}
+
+Task<> AdminController::saveCustomToolConfig(
+    HttpRequestPtr req,
+    std::function<void(const HttpResponsePtr &)> callback
+) const{
+    auto json = req->getJsonObject();
+    if (!json || !json->isMember("pythonPath")) {
+        Json::Value err;
+        err["success"] = false;
+        err["error"] = "缺少 pythonPath 字段";
+        callback(HttpResponse::newHttpJsonResponse(err));
+        co_return;
+    }
+
+    std::string pythonPath = (*json)["pythonPath"].asString();
+    Database::instance().setCustomToolPython(pythonPath);
+
+    Json::Value resp;
+    resp["success"] = true;
+    resp["message"] = "Python解释器路径已保存";
     callback(HttpResponse::newHttpJsonResponse(resp));
     co_return;
 }

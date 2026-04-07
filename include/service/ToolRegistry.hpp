@@ -188,6 +188,21 @@ namespace LittleMeowBot {
             return m_infoTools.contains(name);
         }
 
+        /// @brief 注销工具
+        void unregisterTool(const std::string& name){
+            m_terminalTools.erase(name);
+            m_infoTools.erase(name);
+            m_actionTools.erase(name);
+            spdlog::info("工具已注销: {}", name);
+        }
+
+        /// @brief 清除所有自定义工具（用于重新加载前清理）
+        void clearCustomTools(const std::vector<std::string>& customToolNames){
+            for (const auto& name : customToolNames) {
+                unregisterTool(name);
+            }
+        }
+
         /// @brief 获取工具分类
         ToolCategory getCategory(const std::string& name) const{
             if (m_terminalTools.contains(name)) return ToolCategory::TERMINAL;

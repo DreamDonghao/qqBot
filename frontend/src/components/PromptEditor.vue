@@ -1,0 +1,74 @@
+<script setup lang="ts">
+/**
+ * @file PromptEditor.vue
+ * @brief 提示词编辑组件
+ */
+import { ref, reactive, watch, inject, type Ref } from 'vue'
+import type { ApiResponse } from '../vite-env.d'
+
+const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
+
+const promptKeys: Ref<string[]> = ref(['executor_system', 'executor_remind'])
+const selectedPrompt: Ref<string> = ref('executor_system')
+const prompts = reactive<Record<string, string>>({})
+const promptContent: Ref<string> = ref('')
+const saving: Ref<boolean> = ref(false)
+
+watch(selectedPrompt, async (key: string) => {
+  if (Object.keys(prompts).length === 0) {
+    const resp = await fetch('/admin/api/prompts')
+    Object.assign(prompts, await resp.json())
+  }
+  promptContent.value = prompts[key] || ''
+}, { immediate: true })
+
+const savePrompt = async (): Promise<void> => {
+  saving.value = true
+  try {
+    const resp = await fetch('/admin/api/prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: selectedPrompt.value, content: promptContent.value })
+    })
+    const data: ApiResponse = await resp.json()
+    if (data.success) {
+      showToast!('提示词已保存')
+      prompts[selectedPrompt.value] = promptContent.value
+    } else {
+      showToast!(data.error || '保存失败', true)
+    }
+  } finally {
+    saving.value = false
+  }
+}
+</script>
+
+<template>
+  <div>
+    <div class="page-header">
+      <h1 class="page-title">提示词管理</h1>
+      <p class="page-subtitle">编辑Agent的系统提示词</p>
+    </div>
+
+    <div class="tabs">
+      <button
+        v-for="key in promptKeys"
+        :key="key"
+        :class="{ active: selectedPrompt === key }"
+        @click="selectedPrompt = key"
+        class="tab"
+      >{{ key }}</button>
+    </div>
+
+    <div class="card prompt-card">
+      <div class="card-body">
+        <textarea class="form-input" placeholder="输入提示词内容..." v-model="promptContent"></textarea>
+        <div style="margin-top: 16px;">
+          <button :disabled="saving" @click="savePrompt" class="btn btn-primary">
+            {{ saving ? '保存中...' : '保存提示词' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

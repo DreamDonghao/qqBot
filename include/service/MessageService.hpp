@@ -106,7 +106,7 @@ namespace LittleMeowBot {
             }
 
             if (!requestJson->isMember("retcode") || (*requestJson)["retcode"].asInt() < 0) {
-                LOG_ERROR << "发送消息错误: retcode=" << (*requestJson).get("retcode", -1).asInt();
+                LOG_ERROR << "发送消息错误: retcode=" << requestJson->get("retcode", -1).asInt();
                 co_return;
             }
 
@@ -153,7 +153,7 @@ namespace LittleMeowBot {
                 co_return false;
             }
 
-            int retcode = (*requestJson).get("retcode", -1).asInt();
+            int retcode = requestJson->get("retcode", -1).asInt();
             if (retcode != 0) {
                 spdlog::error("禁言失败: retcode={}", retcode);
                 co_return false;

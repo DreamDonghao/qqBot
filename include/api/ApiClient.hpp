@@ -11,6 +11,7 @@
 #pragma once
 #include <config/Config.hpp>
 #include <service/ToolRegistry.hpp>
+#include <agent/AgentTypes.hpp>
 #include <drogon/HttpAppFramework.h>
 #include <drogon/HttpClient.h>
 #include <drogon/utils/coroutine.h>
@@ -308,9 +309,6 @@ namespace LittleMeowBot {
             LOG_ERROR << "Agent达到最大迭代次数";
             co_return std::nullopt;
         }
-
-        // 使用 AgentTypes.hpp 中定义的 ReplyDecision
-        using ReplyDecision = LittleMeowBot::ReplyDecision;
 
         /// @brief 专门处理回复决策的Agent（支持多轮工具调用）
         drogon::Task<std::optional<ReplyDecision>> requestReplyAgent(

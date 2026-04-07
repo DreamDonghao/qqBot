@@ -4,3 +4,5 @@
 /.claude
 /lib
 /memory
+/frontend/node_modules
+/public

@@ -195,44 +195,40 @@ namespace LittleMeowBot {
                 co_return trimmed;
             }
 
-            // 2. 加上群名前缀
-            std::string prefixedMigration = addGroupNamePrefix(toMigrate, groupName);
-            spdlog::info("群 {}({}) 迁移记忆到长期库：\n{}", groupId, groupName, prefixedMigration);
+            // 2. 逐条存入 RAGFlow 长期记忆库
+            int successCount = 0;
+            std::istringstream stream(toMigrate);
+            std::string line;
+            while (std::getline(stream, line)) {
+                if (line.empty() || line == "无") continue;
 
-            // 3. 存入 RAGFlow 长期记忆库
-            bool success = co_await RAGFlowClient::instance().addMemory(prefixedMigration);
-            if (!success) {
-                spdlog::warn("群 {} 迁移到 RAGFlow 失败，保留短期记忆", groupId);
+                // 每条记忆单独存储，加上群名前缀
+                std::string prefixedMemory = "[" + groupName + "] " + line;
+                bool success = co_await RAGFlowClient::instance().addMemory(prefixedMemory);
+                if (success) {
+                    spdlog::info("群 {}({}) 迁移记忆: {}", groupId, groupName, line);
+                    successCount++;
+                } else {
+                    spdlog::warn("群 {}({}) 迁移记忆失败: {}", groupId, groupName, line);
+                }
+            }
+
+            if (successCount == 0) {
+                spdlog::warn("群 {} 迁移到 RAGFlow 全部失败，保留短期记忆", groupId);
                 std::string trimmed = trimToMaxLines(shortTermMemory, maxLines);
                 updateShortTermMemory(groupId, trimmed);
                 co_return trimmed;
             }
 
-            // 4. 从短期记忆中删除已迁移的条目
+            // 3. 从短期记忆中删除已迁移的条目
             std::string remaining = removeMigratedLines(shortTermMemory, toMigrate);
 
-            // 5. 确保不超过maxLines
+            // 4. 确保不超过maxLines
             remaining = trimToMaxLines(remaining, maxLines);
             updateShortTermMemory(groupId, remaining);
 
-            spdlog::info("群 {} 迁移完成，短期记忆保留 {} 条", groupId, countLines(remaining));
+            spdlog::info("群 {} 迁移完成，成功 {} 条，短期记忆保留 {} 条", groupId, successCount, countLines(remaining));
             co_return remaining;
-        }
-
-        /// @brief 给记忆条目添加群名前缀
-        /// @param memory 记忆文本
-        /// @param groupName 群名
-        /// @return 带前缀的记忆
-        [[nodiscard]] std::string addGroupNamePrefix(const std::string& memory, const std::string& groupName) const{
-            std::string result;
-            std::istringstream stream(memory);
-            std::string line;
-            while (std::getline(stream, line)) {
-                if (!line.empty() && line != "无") {
-                    result += "[" + groupName + "] " + line + "\n";
-                }
-            }
-            return result;
         }
 
         /// @brief 筛选值得长期保存的记忆

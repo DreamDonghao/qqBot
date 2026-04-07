@@ -44,7 +44,7 @@ int main(){
         drogon::app().addListener("0.0.0.0", 7778);
         drogon::app().setDocumentRoot("../public");
         spdlog::info("Server started on port 7778");
-        spdlog::info("Admin page: http://localhost:7778/admin.html");
+        spdlog::info("Admin page: http://localhost:7778/index.html");
 
         drogon::app().run();
 

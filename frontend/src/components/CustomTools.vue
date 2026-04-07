@@ -1,0 +1,688 @@
+<script setup lang="ts">
+/**
+ * @file CustomTools.vue
+ * @brief 自定义工具管理组件
+ */
+import { ref, reactive, computed, onMounted, inject, nextTick, type Ref } from 'vue'
+import type { ApiResponse } from '../vite-env.d'
+
+const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
+
+interface CustomTool {
+  id: number
+  name: string
+  description: string
+  parameters: string
+  executorType: 'python' | 'http'
+  executorConfig: string
+  scriptContent: string
+  enabled: boolean
+}
+
+const tools: Ref<CustomTool[]> = ref([])
+const loading: Ref<boolean> = ref(false)
+const saving: Ref<boolean> = ref(false)
+const showDialog: Ref<boolean> = ref(false)
+const isEdit: Ref<boolean> = ref(false)
+const testing: Ref<boolean> = ref(false)
+const testResult: Ref<string> = ref('')
+
+// Python 配置
+const showConfig: Ref<boolean> = ref(false)
+const pythonPath: Ref<string> = ref('python3')
+const savingConfig: Ref<boolean> = ref(false)
+
+const defaultPythonScript = `# Python 工具脚本
+import sys
+import json
+
+args = {}
+if len(sys.argv) > 1:
+    with open(sys.argv[1]) as f:
+        args = json.load(f)
+
+result = {"status": "ok", "args": args}
+print(json.dumps(result, ensure_ascii=False))`
+
+const editTool = reactive<CustomTool>({
+  id: 0,
+  name: '',
+  description: '',
+  parameters: '{"type":"object","properties":{},"required":[]}',
+  executorType: 'python',
+  executorConfig: '',
+  scriptContent: defaultPythonScript,
+  enabled: true
+})
+
+const testArgs: Ref<string> = ref('{}')
+
+const loadTools = async (): Promise<void> => {
+  loading.value = true
+  try {
+    const resp = await fetch('/admin/api/custom-tools')
+    tools.value = await resp.json()
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadConfig = async (): Promise<void> => {
+  try {
+    const resp = await fetch('/admin/api/custom-tool-config')
+    const data = await resp.json()
+    if (data.pythonPath) {
+      pythonPath.value = data.pythonPath
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const saveConfig = async (): Promise<void> => {
+  if (!pythonPath.value.trim()) {
+    showToast!('请填写Python解释器路径', true)
+    return
+  }
+
+  savingConfig.value = true
+  try {
+    const resp = await fetch('/admin/api/custom-tool-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pythonPath: pythonPath.value.trim() })
+    })
+    const data: ApiResponse = await resp.json()
+    if (data.success) {
+      showToast!('配置已保存')
+      showConfig.value = false
+    } else {
+      showToast!(data.error || '保存失败', true)
+    }
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+const autoResize = (event: Event): void => {
+  const target = event.target as HTMLTextAreaElement
+  target.style.height = 'auto'
+  target.style.height = target.scrollHeight + 'px'
+}
+
+const resizeAllTextareas = (): void => {
+  nextTick(() => {
+    document.querySelectorAll('.auto-height').forEach((el) => {
+      const textarea = el as HTMLTextAreaElement
+      textarea.style.height = 'auto'
+      textarea.style.height = textarea.scrollHeight + 'px'
+    })
+  })
+}
+
+const openAddDialog = (): void => {
+  isEdit.value = false
+  Object.assign(editTool, {
+    id: 0,
+    name: '',
+    description: '',
+    parameters: '{"type":"object","properties":{},"required":[]}',
+    executorType: 'python',
+    executorConfig: '',
+    scriptContent: defaultPythonScript,
+    enabled: true
+  })
+  testResult.value = ''
+  testArgs.value = '{}'
+  showDialog.value = true
+  resizeAllTextareas()
+}
+
+const openEditDialog = (tool: CustomTool): void => {
+  isEdit.value = true
+  Object.assign(editTool, tool)
+  testResult.value = ''
+  testArgs.value = '{}'
+  showDialog.value = true
+  resizeAllTextareas()
+}
+
+const closeDialog = (): void => {
+  showDialog.value = false
+}
+
+const saveTool = async (): Promise<void> => {
+  if (!editTool.name) {
+    showToast!('请填写工具名称', true)
+    return
+  }
+  if (!editTool.description) {
+    showToast!('请填写工具描述', true)
+    return
+  }
+  if (editTool.executorType === 'python' && !editTool.scriptContent) {
+    showToast!('请填写脚本内容', true)
+    return
+  }
+  if (editTool.executorType === 'http' && !editTool.executorConfig) {
+    showToast!('请填写执行配置', true)
+    return
+  }
+
+  try {
+    JSON.parse(editTool.parameters)
+  } catch {
+    showToast!('参数定义 JSON 格式错误', true)
+    return
+  }
+  if (editTool.executorType === 'http') {
+    try {
+      JSON.parse(editTool.executorConfig)
+    } catch {
+      showToast!('执行配置 JSON 格式错误', true)
+      return
+    }
+  }
+
+  saving.value = true
+  try {
+    const url = isEdit.value
+      ? `/admin/api/custom-tool/${editTool.id}`
+      : '/admin/api/custom-tool'
+    const method = isEdit.value ? 'PUT' : 'POST'
+
+    const resp = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editTool)
+    })
+    const data: ApiResponse = await resp.json()
+    if (data.success) {
+      showToast!(isEdit.value ? '工具已更新' : '工具已添加')
+      closeDialog()
+      loadTools()
+    } else {
+      showToast!(data.error || '操作失败', true)
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+const deleteTool = async (id: number): Promise<void> => {
+  if (!confirm('确定删除此工具？')) return
+
+  const resp = await fetch(`/admin/api/custom-tool/${id}`, { method: 'DELETE' })
+  const data: ApiResponse = await resp.json()
+  if (data.success) {
+    showToast!('工具已删除')
+    loadTools()
+  }
+}
+
+const toggleTool = async (id: number): Promise<void> => {
+  const resp = await fetch(`/admin/api/custom-tool/${id}/toggle`, { method: 'POST' })
+  const data: ApiResponse = await resp.json()
+  if (data.success) {
+    showToast!('状态已切换')
+    loadTools()
+  }
+}
+
+const reloadTools = async (): Promise<void> => {
+  const resp = await fetch('/admin/api/custom-tools/reload', { method: 'POST' })
+  const data: ApiResponse = await resp.json()
+  if (data.success) {
+    showToast!('工具已重新加载')
+  }
+}
+
+const testCurrentTool = async (): Promise<void> => {
+  testing.value = true
+  testResult.value = ''
+  try {
+    let testArgsJson
+    try {
+      testArgsJson = JSON.parse(testArgs.value)
+    } catch {
+      showToast!('测试参数 JSON 格式错误', true)
+      return
+    }
+
+    const resp = await fetch('/admin/api/custom-tool/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        executorType: editTool.executorType,
+        executorConfig: editTool.executorConfig,
+        scriptContent: editTool.scriptContent,
+        args: testArgsJson
+      })
+    })
+    const data = await resp.json()
+    if (data.success) {
+      testResult.value = data.result
+    } else {
+      testResult.value = '错误: ' + (data.error || '测试失败')
+    }
+  } finally {
+    testing.value = false
+  }
+}
+
+const dialogWidth = computed(() => editTool.executorType === 'python' ? '900px' : '600px')
+
+onMounted(() => {
+  loadTools()
+  loadConfig()
+})
+</script>
+
+<template>
+  <div>
+    <div class="page-header">
+      <h1 class="page-title">自定义工具</h1>
+      <p class="page-subtitle">添加自定义工具，扩展Bot能力</p>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">工具管理</h3>
+        <div style="display: flex; gap: 8px;">
+          <button @click="showConfig = true" class="btn btn-secondary btn-sm">⚙️ Python配置</button>
+          <button @click="reloadTools" class="btn btn-primary btn-sm">重新加载</button>
+          <button @click="openAddDialog" class="btn btn-success btn-sm">添加工具</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table v-if="!loading">
+          <thead>
+            <tr>
+              <th style="width: 60px">状态</th>
+              <th style="width: 150px">工具名</th>
+              <th>描述</th>
+              <th style="width: 80px">类型</th>
+              <th style="width: 140px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tool in tools" :key="tool.id">
+              <td>
+                <span :class="{ 'status-enabled': tool.enabled, 'status-disabled': !tool.enabled }">
+                  {{ tool.enabled ? '启用' : '禁用' }}
+                </span>
+              </td>
+              <td><code>{{ tool.name }}</code></td>
+              <td>{{ tool.description }}</td>
+              <td>
+                <span class="tag" :class="'tag-' + tool.executorType">{{ tool.executorType }}</span>
+              </td>
+              <td style="white-space: nowrap;">
+                <button @click="toggleTool(tool.id)" class="btn btn-sm" :class="tool.enabled ? 'btn-warning' : 'btn-success'">
+                  {{ tool.enabled ? '禁用' : '启用' }}
+                </button>
+                <button @click="openEditDialog(tool)" class="btn btn-primary btn-sm" style="margin-left: 4px;">编辑</button>
+                <button @click="deleteTool(tool.id)" class="btn btn-danger btn-sm" style="margin-left: 4px;">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="empty-state" v-if="loading">
+          <p>加载中...</p>
+        </div>
+        <div class="empty-state" v-else-if="tools.length === 0">
+          <div class="empty-icon">🔧</div>
+          <p>暂无自定义工具</p>
+          <button @click="openAddDialog" class="btn btn-success">添加工具</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Python 配置对话框 -->
+    <div v-if="showConfig" class="dialog-overlay">
+      <div class="dialog" style="width: 500px;">
+        <div class="dialog-header">
+          <h3>Python 解释器配置</h3>
+          <button @click="showConfig = false" class="dialog-close">×</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label class="form-label">Python 解释器路径</label>
+            <input class="form-input" v-model="pythonPath" placeholder="例如: python3 或 /home/user/myenv/bin/python">
+            <small class="form-hint">
+              默认使用系统 python3。如需使用第三方包，请先创建虚拟环境并在此配置路径。
+            </small>
+          </div>
+          <div class="config-example">
+            <strong>创建虚拟环境示例：</strong>
+            <pre>python3 -m venv ~/my_bot_env
+source ~/my_bot_env/bin/activate
+pip install requests numpy  # 安装需要的包</pre>
+            <p>然后配置路径为: <code>~/my_bot_env/bin/python</code> 或 <code>/home/你的用户名/my_bot_env/bin/python</code></p>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button @click="showConfig = false" class="btn btn-secondary">取消</button>
+          <button @click="saveConfig" :disabled="savingConfig" class="btn btn-success">
+            {{ savingConfig ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加/编辑对话框 -->
+    <div v-if="showDialog" class="dialog-overlay">
+      <div class="dialog" :style="{ width: dialogWidth }">
+        <div class="dialog-header">
+          <h3>{{ isEdit ? '编辑工具' : '添加工具' }}</h3>
+          <button @click="closeDialog" class="dialog-close">×</button>
+        </div>
+
+        <div class="dialog-body">
+          <!-- 基本信息 -->
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">工具名称 *</label>
+              <input class="form-input" placeholder="如: search_web, calculate" v-model="editTool.name" :disabled="isEdit">
+            </div>
+            <div class="form-group" style="width: 120px;">
+              <label class="form-label">执行类型</label>
+              <select class="form-input" v-model="editTool.executorType">
+                <option value="python">Python</option>
+                <option value="http">HTTP</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">工具描述 *</label>
+            <input class="form-input" placeholder="描述工具功能，供 LLM 理解何时调用" v-model="editTool.description">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">参数定义 (JSON Schema)</label>
+            <textarea class="form-input code-input auto-height" v-model="editTool.parameters" @input="autoResize"></textarea>
+          </div>
+
+          <!-- Python 脚本编辑器 -->
+          <div v-if="editTool.executorType === 'python'" class="form-group">
+            <label class="form-label">Python 脚本</label>
+            <textarea class="form-input code-input auto-height" v-model="editTool.scriptContent" @input="autoResize" spellcheck="false"></textarea>
+            <small class="form-hint">参数通过 sys.argv[1] 传入 JSON 文件路径</small>
+          </div>
+
+          <!-- HTTP 配置 -->
+          <div v-else class="form-group">
+            <label class="form-label">HTTP 配置 (JSON)</label>
+            <textarea class="form-input code-input auto-height" v-model="editTool.executorConfig" @input="autoResize"></textarea>
+            <small class="form-hint">示例: {"url": "http://api.example.com", "method": "POST"}</small>
+          </div>
+
+          <!-- 测试区域 -->
+          <div class="test-section">
+            <div class="test-header">
+              <span class="test-title">测试工具</span>
+              <button @click="testCurrentTool" :disabled="testing" class="btn btn-primary btn-sm">
+                {{ testing ? '执行中...' : '执行测试' }}
+              </button>
+            </div>
+            <div class="test-content">
+              <div class="test-input">
+                <label>输入参数 (JSON)</label>
+                <textarea class="form-input code-input auto-height" v-model="testArgs" @input="autoResize"></textarea>
+              </div>
+              <div class="test-output">
+                <label>输出结果</label>
+                <pre class="result-box">{{ testResult || '点击执行测试查看结果...' }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group checkbox-group">
+            <label>
+              <input type="checkbox" v-model="editTool.enabled"> 启用此工具
+            </label>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <button @click="closeDialog" class="btn btn-secondary">取消</button>
+          <button @click="saveTool" :disabled="saving" class="btn btn-success">
+            {{ saving ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.status-enabled {
+  color: #22c55e;
+  font-weight: 500;
+}
+
+.status-disabled {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-python {
+  background: #3776ab;
+  color: white;
+}
+
+.tag-http {
+  background: #22c55e;
+  color: white;
+}
+
+.code-input {
+  font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auto-height {
+  min-height: 60px;
+  resize: none;
+  overflow: hidden;
+}
+
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: white;
+  border-radius: 8px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dialog-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #9ca3af;
+  line-height: 1;
+}
+
+.dialog-close:hover {
+  color: #374151;
+}
+
+.dialog-body {
+  padding: 16px 20px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 4px;
+}
+
+.form-hint {
+  color: #9ca3af;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+.checkbox-group {
+  margin-top: 8px;
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.config-example {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.config-example pre {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.config-example p {
+  margin: 8px 0 0 0;
+  color: #6b7280;
+}
+
+.test-section {
+  margin-top: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.test-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.test-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.test-content {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.test-input label,
+.test-output label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.result-box {
+  margin: 0;
+  padding: 8px 10px;
+  background: #1f2937;
+  color: #e5e7eb;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  min-height: 80px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dialog-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: #f9fafb;
+  position: sticky;
+  bottom: 0;
+}
+</style>

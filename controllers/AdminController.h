@@ -41,21 +41,40 @@ namespace LittleMeowBot {
         // 启用群
         ADD_METHOD_TO(AdminController::getGroups, "/admin/api/groups", drogon::Get);
         ADD_METHOD_TO(AdminController::enableGroup, "/admin/api/group", drogon::Post);
-        ADD_METHOD_TO(AdminController::disableGroup, "/admin/api/group/{groupId}", drogon::Delete);
+        ADD_METHOD_TO(AdminController::toggleGroup, "/admin/api/group/{groupId}/toggle", drogon::Post);
+        ADD_METHOD_TO(AdminController::removeGroup, "/admin/api/group/{groupId}", drogon::Delete);
         ADD_METHOD_TO(AdminController::refreshGroupName, "/admin/api/group/{groupId}/refresh-name", drogon::Post);
+        // 批量刷新群名
+        ADD_METHOD_TO(AdminController::refreshAllGroupNames, "/admin/api/groups/refresh-names", drogon::Post);
         // 知识库配置
         ADD_METHOD_TO(AdminController::getKBConfig, "/admin/api/kb-config", drogon::Get);
         ADD_METHOD_TO(AdminController::saveKBConfig, "/admin/api/kb-config", drogon::Post);
         // 聊天记录
+        ADD_METHOD_TO(AdminController::getChatGroups, "/admin/api/chat-groups", drogon::Get);
         ADD_METHOD_TO(AdminController::getChatRecords, "/admin/api/chat-records/{groupId}", drogon::Get);
+        ADD_METHOD_TO(AdminController::updateChatRecord, "/admin/api/chat-record/{recordId}", drogon::Put);
+        ADD_METHOD_TO(AdminController::deleteChatRecord, "/admin/api/chat-record/{recordId}", drogon::Delete);
+        ADD_METHOD_TO(AdminController::clearGroupChatRecords, "/admin/api/chat-records/{groupId}/clear", drogon::Delete);
         // 群记忆
         ADD_METHOD_TO(AdminController::getGroupMemory, "/admin/api/memory/{groupId}", drogon::Get);
+        ADD_METHOD_TO(AdminController::updateGroupMemory, "/admin/api/memory/{groupId}", drogon::Put);
         // 记忆配置
         ADD_METHOD_TO(AdminController::getMemoryConfig, "/admin/api/memory-config", drogon::Get);
         ADD_METHOD_TO(AdminController::saveMemoryConfig, "/admin/api/memory-config", drogon::Post);
         // QQ Bot 配置
         ADD_METHOD_TO(AdminController::getQQConfig, "/admin/api/qq-config", drogon::Get);
         ADD_METHOD_TO(AdminController::saveQQConfig, "/admin/api/qq-config", drogon::Post);
+        // 自定义工具
+        ADD_METHOD_TO(AdminController::getCustomTools, "/admin/api/custom-tools", drogon::Get);
+        ADD_METHOD_TO(AdminController::addCustomTool, "/admin/api/custom-tool", drogon::Post);
+        ADD_METHOD_TO(AdminController::updateCustomTool, "/admin/api/custom-tool/{id}", drogon::Put);
+        ADD_METHOD_TO(AdminController::deleteCustomTool, "/admin/api/custom-tool/{id}", drogon::Delete);
+        ADD_METHOD_TO(AdminController::toggleCustomTool, "/admin/api/custom-tool/{id}/toggle", drogon::Post);
+        ADD_METHOD_TO(AdminController::reloadCustomTools, "/admin/api/custom-tools/reload", drogon::Post);
+        ADD_METHOD_TO(AdminController::testCustomTool, "/admin/api/custom-tool/test", drogon::Post);
+        // 自定义工具配置
+        ADD_METHOD_TO(AdminController::getCustomToolConfig, "/admin/api/custom-tool-config", drogon::Get);
+        ADD_METHOD_TO(AdminController::saveCustomToolConfig, "/admin/api/custom-tool-config", drogon::Post);
         METHOD_LIST_END
 
         // ============== LLM 配置 ==============
@@ -156,11 +175,20 @@ namespace LittleMeowBot {
             drogon::HttpRequestPtr req,
             std::function<void(const drogon::HttpResponsePtr&)> callback) const;
 
-        /// @brief 禁用群
+        /// @brief 切换群启用/禁用状态
         /// @param req HTTP 请求
         /// @param callback HTTP 响应回调
         /// @param groupId 群号
-        drogon::Task<> disableGroup(
+        drogon::Task<> toggleGroup(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& groupId) const;
+
+        /// @brief 删除群（从数据库移除）
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        /// @param groupId 群号
+        drogon::Task<> removeGroup(
             drogon::HttpRequestPtr req,
             std::function<void(const drogon::HttpResponsePtr&)> callback,
             const std::string& groupId) const;
@@ -173,6 +201,13 @@ namespace LittleMeowBot {
             drogon::HttpRequestPtr req,
             std::function<void(const drogon::HttpResponsePtr&)> callback,
             const std::string& groupId) const;
+
+        /// @brief 批量刷新所有群名称
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        drogon::Task<> refreshAllGroupNames(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
 
         // ============== 知识库配置 ==============
 
@@ -192,11 +227,45 @@ namespace LittleMeowBot {
 
         // ============== 聊天记录 ==============
 
+        /// @brief 获取所有有聊天记录的群列表
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        drogon::Task<> getChatGroups(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
         /// @brief 获取群聊天记录
         /// @param req HTTP 请求，可选 limit 参数
         /// @param callback HTTP 响应回调
         /// @param groupId 群号
         drogon::Task<> getChatRecords(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& groupId) const;
+
+        /// @brief 更新聊天记录
+        /// @param req HTTP 请求，body 包含 content
+        /// @param callback HTTP 响应回调
+        /// @param recordId 记录ID
+        drogon::Task<> updateChatRecord(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& recordId) const;
+
+        /// @brief 删除聊天记录
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        /// @param recordId 记录ID
+        drogon::Task<> deleteChatRecord(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& recordId) const;
+
+        /// @brief 清空群的所有聊天记录
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        /// @param groupId 群号
+        drogon::Task<> clearGroupChatRecords(
             drogon::HttpRequestPtr req,
             std::function<void(const drogon::HttpResponsePtr&)> callback,
             const std::string& groupId) const;
@@ -208,6 +277,15 @@ namespace LittleMeowBot {
         /// @param callback HTTP 响应回调
         /// @param groupId 群号
         drogon::Task<> getGroupMemory(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& groupId) const;
+
+        /// @brief 更新群记忆
+        /// @param req HTTP 请求，body 包含 memory
+        /// @param callback HTTP 响应回调
+        /// @param groupId 群号
+        drogon::Task<> updateGroupMemory(
             drogon::HttpRequestPtr req,
             std::function<void(const drogon::HttpResponsePtr&)> callback,
             const std::string& groupId) const;
@@ -241,6 +319,79 @@ namespace LittleMeowBot {
         /// @param req HTTP 请求，body 包含配置 JSON
         /// @param callback HTTP 响应回调
         drogon::Task<> saveQQConfig(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
+        // ============== 自定义工具 ==============
+
+        /// @brief 获取所有自定义工具
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        drogon::Task<> getCustomTools(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
+        /// @brief 添加自定义工具
+        /// @param req HTTP 请求，body 包含工具配置 JSON
+        /// @param callback HTTP 响应回调
+        drogon::Task<> addCustomTool(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
+        /// @brief 更新自定义工具
+        /// @param req HTTP 请求，body 包含工具配置 JSON
+        /// @param callback HTTP 响应回调
+        /// @param id 工具ID
+        drogon::Task<> updateCustomTool(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& id) const;
+
+        /// @brief 删除自定义工具
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        /// @param id 工具ID
+        drogon::Task<> deleteCustomTool(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& id) const;
+
+        /// @brief 切换自定义工具启用状态
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        /// @param id 工具ID
+        drogon::Task<> toggleCustomTool(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback,
+            const std::string& id) const;
+
+        /// @brief 重载自定义工具（从数据库重新加载到 ToolRegistry）
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        drogon::Task<> reloadCustomTools(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
+        /// @brief 测试自定义工具
+        /// @param req HTTP 请求，body 包含 toolId 和 testArgs
+        /// @param callback HTTP 响应回调
+        drogon::Task<> testCustomTool(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
+        // ============== 自定义工具配置 ==============
+
+        /// @brief 获取自定义工具配置（Python解释器路径等）
+        /// @param req HTTP 请求
+        /// @param callback HTTP 响应回调
+        drogon::Task<> getCustomToolConfig(
+            drogon::HttpRequestPtr req,
+            std::function<void(const drogon::HttpResponsePtr&)> callback) const;
+
+        /// @brief 保存自定义工具配置
+        /// @param req HTTP 请求，body 包含 pythonPath
+        /// @param callback HTTP 响应回调
+        drogon::Task<> saveCustomToolConfig(
             drogon::HttpRequestPtr req,
             std::function<void(const drogon::HttpResponsePtr&)> callback) const;
     };

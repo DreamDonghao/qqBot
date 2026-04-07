@@ -41,8 +41,11 @@ namespace LittleMeowBot {
 
         /// @brief 初始化 Agent System（注册工具）
         void initialize(){
-            // 注册所有工具
+            // 注册所有内置工具
             AgentToolManager::instance().registerAllTools();
+
+            // 注册自定义工具
+            AgentToolManager::instance().registerCustomTools();
 
             // 初始化提示词服务（从数据库加载默认提示词）
             PromptService::instance().initialize();

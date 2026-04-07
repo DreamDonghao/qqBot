@@ -296,6 +296,106 @@ namespace LittleMeowBot {
             return groups;
         }
 
+        /// @brief 获取所有有聊天记录的群（用于聊天记录页面）
+        /// @return 群ID和群名称的列表，以及消息数量
+        std::vector<std::tuple<uint64_t, std::string, int>> getGroupsWithChatRecords() const{
+            std::shared_lock lock(m_mutex);
+            std::vector<std::tuple<uint64_t, std::string, int>> groups;
+            Statement stmt(m_db,
+                "SELECT cr.group_id, COALESCE(eg.group_name, ''), COUNT(*) as cnt "
+                "FROM chat_records cr "
+                "LEFT JOIN enabled_groups eg ON cr.group_id = eg.group_id "
+                "GROUP BY cr.group_id "
+                "ORDER BY cnt DESC");
+            while (stmt.step()) {
+                groups.emplace_back(stmt.getInt64(0), stmt.getText(1), stmt.getInt(2));
+            }
+            return groups;
+        }
+
+        /// @brief 获取所有群（包括已禁用的）
+        /// @return 群ID、群名称、启用状态、消息数量的列表
+        std::vector<std::tuple<uint64_t, std::string, bool, int>> getAllGroupsWithStatus() const{
+            std::shared_lock lock(m_mutex);
+            std::vector<std::tuple<uint64_t, std::string, bool, int>> groups;
+            Statement stmt(m_db,
+                "SELECT eg.group_id, eg.group_name, eg.enabled, "
+                "(SELECT COUNT(*) FROM chat_records WHERE group_id = eg.group_id) as cnt "
+                "FROM enabled_groups eg "
+                "ORDER BY eg.enabled DESC, cnt DESC");
+            while (stmt.step()) {
+                groups.emplace_back(stmt.getInt64(0), stmt.getText(1), stmt.getInt(2) == 1, stmt.getInt(3));
+            }
+            return groups;
+        }
+
+        /// @brief 切换群启用状态
+        void toggleGroupStatus(uint64_t groupId) const{
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "UPDATE enabled_groups SET enabled = NOT enabled WHERE group_id = ?");
+            stmt.bind(1, groupId);
+            stmt.exec();
+        }
+
+        /// @brief 更新聊天记录内容
+        void updateChatRecord(int recordId, const std::string& content) const{
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "UPDATE chat_records SET content = ? WHERE id = ?");
+            stmt.bind(1, content);
+            stmt.bind(2, recordId);
+            stmt.exec();
+        }
+
+        /// @brief 删除聊天记录
+        void deleteChatRecord(int recordId) const{
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "DELETE FROM chat_records WHERE id = ?");
+            stmt.bind(1, recordId);
+            stmt.exec();
+        }
+
+        /// @brief 清空群的所有聊天记录
+        void clearGroupChatRecords(uint64_t groupId) const{
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "DELETE FROM chat_records WHERE group_id = ?");
+            stmt.bind(1, groupId);
+            stmt.exec();
+            spdlog::info("已清空群 {} 的聊天记录", groupId);
+        }
+
+        /// @brief 更新群记忆
+        void updateLongTermMemory(uint64_t groupId, const std::string& memory) const{
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "UPDATE long_term_memory SET memory = ? WHERE group_id = ?");
+            stmt.bind(1, memory);
+            stmt.bind(2, groupId);
+            if (stmt.step() == SQLITE_DONE && sqlite3_changes(m_db) == 0) {
+                // 如果没有更新到记录，则插入
+                Statement insertStmt(m_db, "INSERT INTO long_term_memory (group_id, memory) VALUES (?, ?)");
+                insertStmt.bind(1, groupId);
+                insertStmt.bind(2, memory);
+                insertStmt.exec();
+            }
+        }
+
+        /// @brief 获取聊天记录（带ID）
+        Json::Value getChatRecordsWithIds(uint64_t groupId, int limit = 50) const{
+            std::shared_lock lock(m_mutex);
+            Json::Value result;
+            Statement stmt(m_db,
+                "SELECT id, role, content FROM chat_records WHERE group_id = ? ORDER BY id DESC LIMIT ?");
+            stmt.bind(1, groupId);
+            stmt.bind(2, limit);
+            while (stmt.step()) {
+                Json::Value item;
+                item["id"] = stmt.getInt(0);
+                item["role"] = stmt.getText(1);
+                item["content"] = stmt.getText(2);
+                result.append(item);
+            }
+            return result;
+        }
+
         void updateGroupName(uint64_t groupId, const std::string& name) const{
             std::unique_lock lock(m_mutex);
             Statement stmt(m_db, "UPDATE enabled_groups SET group_name = ? WHERE group_id = ?");
@@ -574,6 +674,151 @@ namespace LittleMeowBot {
             return stmt.step();
         }
 
+    // ============================================================
+        //                      自定义工具操作
+        // ============================================================
+
+        /// @brief 自定义工具结构
+        struct CustomTool {
+            int id = 0;
+            std::string name;           // 工具名，如 "search_web"
+            std::string description;    // 给LLM看的描述
+            std::string parameters;     // JSON Schema (字符串形式)
+            std::string executorType;   // "python" | "http"
+            std::string executorConfig; // JSON 配置 (http用)
+            std::string scriptContent;  // Python脚本内容 (python用)
+            bool enabled = true;
+        };
+
+        /// @brief 获取所有自定义工具
+        std::vector<CustomTool> getCustomTools() const {
+            std::shared_lock lock(m_mutex);
+            std::vector<CustomTool> tools;
+            Statement stmt(m_db,
+                "SELECT id, name, description, parameters, executor_type, executor_config, script_content, enabled "
+                "FROM custom_tools ORDER BY id");
+            while (stmt.step()) {
+                CustomTool tool;
+                tool.id = stmt.getInt(0);
+                tool.name = stmt.getText(1);
+                tool.description = stmt.getText(2);
+                tool.parameters = stmt.getText(3);
+                tool.executorType = stmt.getText(4);
+                tool.executorConfig = stmt.getText(5);
+                tool.scriptContent = stmt.getText(6);
+                tool.enabled = stmt.getInt(7) == 1;
+                tools.push_back(tool);
+            }
+            return tools;
+        }
+
+        /// @brief 获取启用的自定义工具（供 AgentToolManager 使用）
+        std::vector<CustomTool> getEnabledCustomTools() const {
+            std::shared_lock lock(m_mutex);
+            std::vector<CustomTool> tools;
+            Statement stmt(m_db,
+                "SELECT id, name, description, parameters, executor_type, executor_config, script_content "
+                "FROM custom_tools WHERE enabled = 1 ORDER BY id");
+            while (stmt.step()) {
+                CustomTool tool;
+                tool.id = stmt.getInt(0);
+                tool.name = stmt.getText(1);
+                tool.description = stmt.getText(2);
+                tool.parameters = stmt.getText(3);
+                tool.executorType = stmt.getText(4);
+                tool.executorConfig = stmt.getText(5);
+                tool.scriptContent = stmt.getText(6);
+                tool.enabled = true;
+                tools.push_back(tool);
+            }
+            return tools;
+        }
+
+        /// @brief 添加自定义工具
+        int addCustomTool(const CustomTool& tool) const {
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db,
+                "INSERT INTO custom_tools (name, description, parameters, executor_type, executor_config, script_content, enabled) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)");
+            stmt.bind(1, tool.name);
+            stmt.bind(2, tool.description);
+            stmt.bind(3, tool.parameters);
+            stmt.bind(4, tool.executorType);
+            stmt.bind(5, tool.executorConfig);
+            stmt.bind(6, tool.scriptContent);
+            stmt.bind(7, tool.enabled ? 1 : 0);
+            stmt.exec();
+            spdlog::info("已添加自定义工具: {}", tool.name);
+            return sqlite3_last_insert_rowid(m_db);
+        }
+
+        /// @brief 更新自定义工具
+        void updateCustomTool(const CustomTool& tool) const {
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db,
+                "UPDATE custom_tools SET name=?, description=?, parameters=?, executor_type=?, executor_config=?, script_content=?, enabled=? "
+                "WHERE id=?");
+            stmt.bind(1, tool.name);
+            stmt.bind(2, tool.description);
+            stmt.bind(3, tool.parameters);
+            stmt.bind(4, tool.executorType);
+            stmt.bind(5, tool.executorConfig);
+            stmt.bind(6, tool.scriptContent);
+            stmt.bind(7, tool.enabled ? 1 : 0);
+            stmt.bind(8, tool.id);
+            stmt.exec();
+            spdlog::info("已更新自定义工具: {}", tool.name);
+        }
+
+        /// @brief 删除自定义工具
+        void deleteCustomTool(int id) const {
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "DELETE FROM custom_tools WHERE id=?");
+            stmt.bind(1, id);
+            stmt.exec();
+            spdlog::info("已删除自定义工具 ID: {}", id);
+        }
+
+        /// @brief 切换自定义工具启用状态
+        void toggleCustomTool(int id) const {
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db, "UPDATE custom_tools SET enabled = NOT enabled WHERE id=?");
+            stmt.bind(1, id);
+            stmt.exec();
+        }
+
+        /// @brief 检查工具名是否已存在
+        bool hasCustomTool(const std::string& name) const {
+            std::shared_lock lock(m_mutex);
+            Statement stmt(m_db, "SELECT 1 FROM custom_tools WHERE name=?");
+            stmt.bind(1, name);
+            return stmt.step();
+        }
+
+        // ============================================================
+        //                      自定义工具配置
+        // ============================================================
+
+        /// @brief 获取自定义工具Python解释器路径
+        std::string getCustomToolPython() const {
+            std::shared_lock lock(m_mutex);
+            Statement stmt(m_db, "SELECT value FROM settings WHERE key='custom_tool_python'");
+            if (stmt.step()) {
+                return stmt.getText(0);
+            }
+            return "python3";  // 默认值
+        }
+
+        /// @brief 设置自定义工具Python解释器路径
+        void setCustomToolPython(const std::string& pythonPath) const {
+            std::unique_lock lock(m_mutex);
+            Statement stmt(m_db,
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_tool_python', ?)");
+            stmt.bind(1, pythonPath);
+            stmt.exec();
+            spdlog::info("自定义工具Python路径已设置: {}", pythonPath);
+        }
+
     private:
         Database() = default;
         ~Database(){ close(); }
@@ -659,6 +904,21 @@ namespace LittleMeowBot {
                 self_qq_number INTEGER,
                 qq_http_host TEXT,
                 bot_name TEXT DEFAULT '小喵'
+            ))",
+                R"(CREATE TABLE IF NOT EXISTS custom_tools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT NOT NULL,
+                parameters TEXT,
+                executor_type TEXT NOT NULL CHECK(executor_type IN ('python', 'http')),
+                executor_config TEXT,
+                script_content TEXT,
+                enabled INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ))",
+                R"(CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
             ))"
             };
 
@@ -679,10 +939,34 @@ namespace LittleMeowBot {
                 sqlite3_exec(m_db, sql, nullptr, nullptr, nullptr);
             }
 
+            // 数据库迁移
+            migrateDatabase();
+
             initDefaultLLMConfigs();
             initDefaultKBConfig();
             initDefaultMemoryConfig();
             initDefaultQQConfig();
+        }
+
+        /// @brief 数据库迁移 - 添加新列
+        void migrateDatabase() const{
+            // 检查 custom_tools 表是否有 script_content 列
+            bool hasScriptContent = false;
+            auto callback = [](void* data, int argc, char** argv, char** colNames) -> int {
+                for (int i = 0; i < argc; i++) {
+                    if (argv[i] && std::string(argv[i]) == "script_content") {
+                        *static_cast<bool*>(data) = true;
+                        break;
+                    }
+                }
+                return 0;
+            };
+            sqlite3_exec(m_db, "PRAGMA table_info(custom_tools)", callback, &hasScriptContent, nullptr);
+
+            if (!hasScriptContent) {
+                spdlog::info("数据库迁移: 添加 script_content 列");
+                sqlite3_exec(m_db, "ALTER TABLE custom_tools ADD COLUMN script_content TEXT", nullptr, nullptr, nullptr);
+            }
         }
 
         void initDefaultLLMConfigs() const{

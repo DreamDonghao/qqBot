@@ -6,6 +6,7 @@
 ///          - 终端工具：no_reply, reply
 ///          - 信息工具：get_weather, search_web, get_time, search_knowledge, recall_memory
 ///          - 动作工具：random, send_face, send_image, send_emoji, at_user, ban_user
+///          - 自定义工具：从数据库加载用户定义的工具
 
 #pragma once
 #include <service/ToolRegistry.hpp>
@@ -13,6 +14,7 @@
 #include <api/ApiClient.hpp>
 #include <storage/Database.hpp>
 #include <drogon/utils/coroutine.h>
+#include <drogon/HttpClient.h>
 #include <json/value.h>
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
@@ -23,6 +25,11 @@
 #include <ctime>
 #include <sstream>
 #include <iomanip>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <filesystem>
 
 namespace LittleMeowBot {
     // 工具限制常量
@@ -374,7 +381,205 @@ namespace LittleMeowBot {
             spdlog::info("ToolManager: 工具注册完成（共13个工具）");
         }
 
+        /// @brief 注册自定义工具（从数据库加载）
+        void registerCustomTools() const {
+            auto& registry = ToolRegistry::instance();
+            auto& db = Database::instance();
+
+            // 获取数据库中所有自定义工具名称（包括禁用的）
+            auto allTools = db.getCustomTools();
+            std::vector<std::string> allToolNames;
+            for (const auto& t : allTools) {
+                allToolNames.push_back(t.name);
+            }
+
+            // 先清除旧的自定义工具
+            registry.clearCustomTools(allToolNames);
+
+            // 只注册启用的工具
+            auto tools = db.getEnabledCustomTools();
+            int count = 0;
+
+            for (const auto& tool : tools) {
+                // 解析参数 JSON
+                Json::Value params;
+                if (!tool.parameters.empty()) {
+                    Json::CharReaderBuilder builder;
+                    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+                    std::string errors;
+                    reader->parse(tool.parameters.c_str(),
+                                  tool.parameters.c_str() + tool.parameters.size(),
+                                  &params, &errors);
+                }
+
+                // 根据执行类型注册不同的 handler
+                if (tool.executorType == "python") {
+                    registry.registerTool(
+                        {
+                            .name = tool.name,
+                            .description = tool.description,
+                            .parameters = params,
+                            .handler = [script = tool.scriptContent](const Json::Value& args) -> drogon::Task<std::string> {
+                                co_return co_await executePythonTool(script, args);
+                            }
+                        }, ToolCategory::INFORMATION
+                    );
+                } else if (tool.executorType == "http") {
+                    registry.registerTool(
+                        {
+                            .name = tool.name,
+                            .description = tool.description,
+                            .parameters = params,
+                            .handler = [config = tool.executorConfig](const Json::Value& args) -> drogon::Task<std::string> {
+                                co_return co_await executeHttpTool(config, args);
+                            }
+                        }, ToolCategory::INFORMATION
+                    );
+                }
+
+                count++;
+                spdlog::info("ToolManager: 注册自定义工具 '{}' ({})", tool.name, tool.executorType);
+            }
+
+            spdlog::info("ToolManager: 自定义工具注册完成（共{}个）", count);
+        }
+
+        /// @brief 执行 Python 脚本工具
+        /// @param scriptContent Python脚本内容（直接存储在数据库中）
+        /// @param args 传入参数
+        static drogon::Task<std::string> executePythonTool(const std::string& scriptContent, const Json::Value& args) {
+            if (scriptContent.empty()) {
+                co_return std::string("脚本内容为空");
+            }
+
+            // 获取配置的Python解释器路径
+            std::string pythonPath = Database::instance().getCustomToolPython();
+
+            // 构建输入参数 JSON
+            Json::StreamWriterBuilder writerBuilder;
+            writerBuilder["indentation"] = "";
+            std::string inputJson = Json::writeString(writerBuilder, args);
+
+            // 创建临时脚本文件
+            std::string tmpScript = "/tmp/tool_" + std::to_string(std::rand()) + ".py";
+            std::string tmpInput = "/tmp/tool_input_" + std::to_string(std::rand()) + ".json";
+
+            // 写入脚本 - 去除开头可能的多余空白，保留内部缩进
+            std::string cleanScript = scriptContent;
+            // 去除开头的空白行
+            size_t firstNonSpace = cleanScript.find_first_not_of(" \t\n\r");
+            if (firstNonSpace != std::string::npos && firstNonSpace > 0) {
+                cleanScript = cleanScript.substr(firstNonSpace);
+            }
+
+            {
+                std::ofstream scriptFile(tmpScript);
+                scriptFile << cleanScript;
+            }
+            {
+                std::ofstream inputFile(tmpInput);
+                inputFile << inputJson;
+            }
+
+            // 调试：打印脚本内容
+            spdlog::debug("Python脚本内容:\n{}", cleanScript);
+
+            // 执行: pythonPath script.py input.json
+            std::string cmd = pythonPath + " " + tmpScript + " " + tmpInput + " 2>&1";
+            spdlog::debug("执行Python工具: {}", cmd);
+
+            std::array<char, 4096> buffer;
+            std::string result;
+
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (!pipe) {
+                std::filesystem::remove(tmpScript);
+                std::filesystem::remove(tmpInput);
+                co_return std::string("执行脚本失败");
+            }
+
+            while (fgets(buffer.data(), buffer.size(), pipe)) {
+                result += buffer.data();
+            }
+            int exitCode = pclose(pipe);
+
+            // 清理临时文件
+            std::filesystem::remove(tmpScript);
+            std::filesystem::remove(tmpInput);
+
+            if (exitCode != 0) {
+                spdlog::warn("Python工具执行返回非零: {}, 输出: {}", exitCode, result);
+            }
+
+            // 移除末尾换行
+            while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) {
+                result.pop_back();
+            }
+
+            co_return result;
+        }
+
+        /// @brief 执行 HTTP 工具
+        static drogon::Task<std::string> executeHttpTool(const std::string& config, const Json::Value& args) {
+            // 解析配置
+            Json::Value configJson;
+            Json::CharReaderBuilder builder;
+            std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+            std::string errors;
+
+            if (!reader->parse(config.c_str(), config.c_str() + config.size(), &configJson, &errors)) {
+                spdlog::error("HTTP工具配置解析失败: {}", errors);
+                co_return std::string("工具配置错误");
+            }
+
+            std::string url = configJson.isMember("url") ? configJson["url"].asString() : "";
+            std::string method = configJson.isMember("method") ? configJson["method"].asString() : "POST";
+            int timeout = configJson.isMember("timeout") ? configJson["timeout"].asInt() : 30;
+
+            if (url.empty()) {
+                co_return std::string("未配置URL");
+            }
+
+            // 解析 URL
+            // 格式: http://host:port/path 或 https://host:port/path
+            size_t protoEnd = url.find("://");
+            if (protoEnd == std::string::npos) {
+                co_return std::string("URL格式错误");
+            }
+            std::string proto = url.substr(0, protoEnd);
+            std::string rest = url.substr(protoEnd + 3);
+
+            size_t pathStart = rest.find('/');
+            std::string hostPort = pathStart == std::string::npos ? rest : rest.substr(0, pathStart);
+            std::string path = pathStart == std::string::npos ? "/" : rest.substr(pathStart);
+
+            // 创建 HTTP 客户端
+            std::string baseUrl = proto + "://" + hostPort;
+            auto client = drogon::HttpClient::newHttpClient(baseUrl);
+
+            // 创建请求
+            auto req = drogon::HttpRequest::newHttpRequest();
+            req->setMethod(method == "GET" ? drogon::Get : drogon::Post);
+            req->setPath(path);
+
+            // 将 args 作为 JSON body 发送
+            if (method != "GET" && !args.isNull()) {
+                Json::StreamWriterBuilder writerBuilder;
+                req->setBody(Json::writeString(writerBuilder, args));
+                req->addHeader("Content-Type", "application/json");
+            }
+
+            try {
+                auto resp = co_await client->sendRequestCoro(req);
+                co_return std::string(resp->getBody());
+            } catch (const std::exception& e) {
+                spdlog::error("HTTP工具执行失败: {}", e.what());
+                co_return std::string("HTTP请求失败: ") + e.what();
+            }
+        }
+
     private:
         AgentToolManager() = default;
     };
 }
+
