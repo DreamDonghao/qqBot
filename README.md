@@ -2,6 +2,8 @@
 
 一个智能 QQ 群聊机器人，基于 Agent 架构，支持自定义角色、长期记忆、多工具调用。
 
+QQ交流群：1097487360
+
 > ⚠️ **使用约束**
 > - ✅ 个人和非商业组织免费使用
 > - ❌ **禁止商业使用**
@@ -302,4 +304,4 @@ AGPL-3.0 with Additional Terms
 
 ---
 
-Made with ❤️ by [DreamDonghao](https://github.com/DreamDonghao)
+Made with  by [DreamDonghao](https://github.com/DreamDonghao)
