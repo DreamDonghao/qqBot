@@ -32,7 +32,7 @@ namespace insoulforge {
     }
 
     drogon::Task<std::optional<std::string>> AgentSystem::process(
-      const ChatRecordManager &chatRecords, const MemoryManager &memory, QQMessage message) {
+      const ChatRecordManager &chatRecords, const MemoryManager &memory, OneBotMessage message) {
         if (!isRunning()) {
             co_return std::nullopt;
         }

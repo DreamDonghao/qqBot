@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <config/Config.hpp>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <mutex>
 #include <ranges>
 #include <service/LongTermMemory.hpp>
@@ -385,7 +385,7 @@ namespace insoulforge {
             int applied = 0;
             for (const auto &[qqStr, deltaValue]: deltas->items()) {
                 const uint64_t qqNumber = parseUInt64(qqStr);
-                if (qqNumber == 0 || qqNumber == QQMessage::kSystemAccountId)
+                if (qqNumber == 0 || qqNumber == OneBotMessage::kSystemAccountId)
                     continue;
                 if (!deltaValue.is_number_integer())
                     continue;

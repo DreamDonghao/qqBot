@@ -6,7 +6,7 @@
 #include <config/Config.hpp>
 #include <drogon/drogon.h>
 #include <iomanip>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/TaskScheduler.hpp>
 #include <spdlog/spdlog.h>
 #include <sstream>
@@ -70,7 +70,7 @@ namespace insoulforge {
             body["time"] = static_cast<int64_t>(std::time(nullptr));
             body["message_id"] = fmt::to_string(msgId);
             body["raw_message"] = text;
-            body["sender"]["user_id"] = QQMessage::kSystemAccountId;
+            body["sender"]["user_id"] = OneBotMessage::kSystemAccountId;
             body["sender"]["nickname"] = std::string(kSystemTaskLabel);
             if (task.sessionType == "private") {
                 body["message_type"] = "private";
@@ -211,7 +211,7 @@ namespace insoulforge {
 
     drogon::Task<> TaskScheduler::trigger(TaskStore::ScheduledTask task) {
         const uint64_t logSessionId =
-          task.sessionType == "private" ? task.targetId | QQMessage::kPrivateSessionFlag : task.targetId;
+          task.sessionType == "private" ? task.targetId | OneBotMessage::kPrivateSessionFlag : task.targetId;
 
         const bool delayed = std::time(nullptr) > task.remindTime;
         Logger::session(logSessionId)

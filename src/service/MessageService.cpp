@@ -1,11 +1,11 @@
 /// @file MessageService.cpp
-/// @brief QQ 消息服务 - 实现
+/// @brief OneBot 消息服务 - 实现
 
 #include <algorithm>
 #include <config/Config.hpp>
 #include <event/DomainEvent.hpp>
 #include <event/EventBus.hpp>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <regex>
 #include <service/MessageService.hpp>
 #include <service/OneBotClient.hpp>
@@ -22,7 +22,7 @@ namespace insoulforge {
         result = std::regex_replace(result, atPattern, "[CQ:at,qq=$1]");
 
         // 2. 模糊格式 @昵称 → 查找昵称映射
-        auto nameToQQ = QQMessage::getNameToQQMap();
+        auto nameToQQ = OneBotMessage::getNameToQQMap();
 
         // 按昵称长度降序排序，避免短昵称先匹配
         std::vector<std::pair<std::string, uint64_t>> sortedNames(nameToQQ.begin(), nameToQQ.end());
@@ -117,15 +117,15 @@ namespace insoulforge {
       const uint64_t userId, std::string message, const ChatRecordManager &chatRecords) {
         const std::string processedMessage = convertAtToCQCode(std::move(message));
         co_return co_await afterSendMessage(
-          OneBotClient::sendPrivateMsg(userId, processedMessage, userId | QQMessage::kPrivateSessionFlag), chatRecords,
-          processedMessage, userId | QQMessage::kPrivateSessionFlag, "私聊消息");
+          OneBotClient::sendPrivateMsg(userId, processedMessage, userId | OneBotMessage::kPrivateSessionFlag), chatRecords,
+          processedMessage, userId | OneBotMessage::kPrivateSessionFlag, "私聊消息");
     }
 
     drogon::Task<std::string> MessageService::fetchAndUpdateSessionName(const uint64_t sessionId) {
         std::string name;
-        if (QQMessage::isPrivateSession(sessionId)) {
+        if (OneBotMessage::isPrivateSession(sessionId)) {
             // 私聊会话取 QQ 昵称，复用 groupName 列存储
-            const uint64_t userId = sessionId & ~QQMessage::kPrivateSessionFlag;
+            const uint64_t userId = sessionId & ~OneBotMessage::kPrivateSessionFlag;
             const auto resp = co_await OneBotClient::getStrangerInfo(userId, sessionId);
             name = getStr(atOrNull(resp, "data"), "nickname");
         } else {

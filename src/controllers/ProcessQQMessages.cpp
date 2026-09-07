@@ -5,10 +5,10 @@ using namespace insoulforge;
 using namespace drogon;
 
 Task<> ProcessQQMessages::receiveMessages(
-  const HttpRequestPtr req, std::function<void(const HttpResponsePtr &)> callback) {
+  const HttpRequestPtr req, const std::function<void(const HttpResponsePtr &)> callback) {
     auto body = parseJsonBody(req);
     if (!body) {
-        auto resp = HttpResponse::newHttpResponse();
+        const auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k400BadRequest);
         resp->setBody("Invalid JSON or not an object");
         callback(resp);
@@ -19,5 +19,6 @@ Task<> ProcessQQMessages::receiveMessages(
     respJson["status"] = "ok";
     callback(jsonResponse(respJson));
 
-    co_await MessagePipeline::instance().process(std::move(*body));
+    MessagePipeline::instance().enqueue(std::move(*body));
+    co_return;
 }

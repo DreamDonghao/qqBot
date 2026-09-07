@@ -4,7 +4,7 @@
 #include <agent/tools/ToolRuntime.hpp>
 #include <controllers/CommandHandler.hpp>
 #include <fmt/core.h>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/OneBotClient.hpp>
 #include <service/SessionConfigManager.hpp>
 #include <spdlog/spdlog.h>
@@ -35,7 +35,7 @@ namespace insoulforge {
         }
     } // namespace
 
-    bool isCommand(const QQMessage &message) {
+    bool isCommand(const OneBotMessage &message) {
         // 群聊命令需要 @ 机器人；私聊消息本身就是对机器人说的，无需 @
         if (!message.atMe() && !message.isPrivate())
             return false;
@@ -44,7 +44,7 @@ namespace insoulforge {
         return pos < rawMsg.length() && rawMsg[pos] == '/';
     }
 
-    drogon::Task<std::string> handleCommand(QQMessage message) {
+    drogon::Task<std::string> handleCommand(OneBotMessage message) {
         std::string rawMsg = message.getRawMessage();
         uint64_t sessionId = message.getSessionId(); ///< 会话 ID（群聊=群号；私聊=用户QQ号|私聊标志位）
         uint64_t senderQQ = message.getSenderQQNumber();

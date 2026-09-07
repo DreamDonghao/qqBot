@@ -16,7 +16,7 @@
 namespace insoulforge {
     namespace {
         constexpr size_t kMaxEntries = 5000;
-        // 与 QQMessage::kPrivateSessionFlag 保持一致（util 层不反向依赖 model）
+        // 与 OneBotMessage::kPrivateSessionFlag 保持一致（util 层不反向依赖 model）
         constexpr uint64_t kPrivateSessionFlag = 1ULL << 63;
         const std::regex kSessionPatterns[] = {
           std::regex(R"((?:群|sessionId|group_id)[ =:：]+([0-9]{1,20}))", std::regex::icase),

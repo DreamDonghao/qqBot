@@ -4,7 +4,7 @@
 #include <agent/runtime/ExecutorAgent.hpp>
 #include <config/Config.hpp>
 #include <fmt/core.h>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <ranges>
 #include <regex>
 #include <service/ChatRecordManager.hpp>
@@ -52,7 +52,8 @@ namespace insoulforge {
                 "affinity": 好感度（-100～100 的整数，仅群成员消息有此字段，陌生人为 0）
             },
             "message_id": "消息ID（数字字符串）",
-            "text": "消息内容（更早对话已截断到 500 字，勿当作完整原文）",
+            "text": "仅文本段；无文本时此字段缺失（更早对话已截断到 500 字，勿当作完整原文）",
+            "segments": "按原始顺序保存的文本、@提及、图片、表情与通知段",
             "reply_to": "此消息引用回复的目标消息ID，没有引用时为 null"
         }
     ],
@@ -65,7 +66,8 @@ namespace insoulforge {
                 "affinity": 好感度（-100～100 的整数，仅群成员消息有此字段，陌生人为 0）
             },
             "message_id": "消息ID（数字字符串）",
-            "text": "消息内容（更早对话已截断到 500 字，勿当作完整原文）",
+            "text": "仅文本段；无文本时此字段缺失",
+            "segments": "按原始顺序保存的富内容段",
           	"memories": [
                 "召回的记忆片段，可能无关",
             ],
@@ -83,8 +85,8 @@ namespace insoulforge {
   字段说明：
 
   - sender.qq 为 "self" 的记录是我自己发出的消息（name 形如「昵称(我)」），它没有 affinity 字段
-  - recent_conversation 的记录可能多出两个字段：images（原始图片列表 [{file, url}]）、memories（与该条消息相关的召回长期记忆，回答时结合参考）
-  - text 中的标记：[图片：xxx] 是图片的识别描述；@[昵称:QQ号] 是@某人；[拍一拍：xxx] 是拍一拍动作，没有发出任何文字
+  - recent_conversation 的记录可能多出 images、faces、notifications、segments、memories 字段。图片描述在 images[].description，识别失败时看 recognition_status；图片 URL 和 file 仅供工具调用
+  - @提及保存在 segments 中 type="at" 的段；拍一拍、入群和退群保存在 notifications 中，它们不是 text
   - 需要引用回复某条消息时，把该记录的 message_id 传给 reply_with_quote
   - response_requirements.max_length 是本轮回复的字数上限，回复尽量不超过
 
@@ -162,12 +164,28 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
             return text.substr(0, i) + "…";
         }
 
-        /// @brief 处理较早的单条消息记录：删除 images 字段、截断 text 字段后作为数组元素返回
+        /// @brief 处理较早的单条消息记录：删除图片定位信息、截断文本后作为数组元素返回
         [[nodiscard]] json processOlderRecord(const json &record) {
             json content = parseRecordContent(record);
             if (!content.is_object())
                 return content; // 历史存量可能是纯文本，解析失败原样保留
             content.erase("images");
+            if (content.contains("segments") && content["segments"].is_array()) {
+                json segments = json::array();
+                for (const auto &segment: content["segments"]) {
+                    if (getStr(segment, "type") != "image") {
+                        segments.push_back(segment);
+                        continue;
+                    }
+                    json image;
+                    image["type"] = "image";
+                    image["recognition_status"] = getStr(segment, "recognition_status");
+                    if (const std::string description = getStr(segment, "description"); !description.empty())
+                        image["description"] = description;
+                    segments.push_back(std::move(image));
+                }
+                content["segments"] = std::move(segments);
+            }
             if (content.contains("text") && content["text"].is_string()) {
                 constexpr size_t kOldRecordMaxChars = 500;
                 content["text"] = truncateUtf8(content["text"].get<std::string>(), kOldRecordMaxChars);
@@ -281,9 +299,9 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
             // 会话详情放最前：群名/群号供模型直接取用，无需再向工具查询
             const uint64_t sessionId = chatRecords.getSessionId();
             json sessionInfo;
-            if (QQMessage::isPrivateSession(sessionId)) {
+            if (OneBotMessage::isPrivateSession(sessionId)) {
                 sessionInfo["type"] = "private";
-                sessionInfo["qq"] = QQMessage::parseSessionTarget(sessionId).second;
+                sessionInfo["qq"] = OneBotMessage::parseSessionTarget(sessionId).second;
             } else {
                 sessionInfo["type"] = "group";
                 sessionInfo["group_id"] = sessionId;
@@ -422,7 +440,7 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
         drogon::Task<std::optional<ReplyDecision>> executeWithAgent(json messages, const uint64_t sessionId) {
             const auto &config = Config::instance();
             const json tools =
-              ToolRegistry::instance().getTools({.isPrivateSession = QQMessage::isPrivateSession(sessionId)});
+              ToolRegistry::instance().getTools({.isPrivateSession = OneBotMessage::isPrivateSession(sessionId)});
             if (tools.empty()) {
                 Logger::session(sessionId).error("[Executor] 未注册工具");
                 co_return std::nullopt;

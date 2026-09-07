@@ -4,10 +4,11 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
+#include <memory>
 #include <optional>
 #include <string>
 
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/ChatRecordManager.hpp>
 #include <service/MemoryManager.hpp>
 
@@ -20,8 +21,8 @@ namespace insoulforge {
     public:
         /// @brief 使用 OneBot 原始事件创建上下文
         /// @param event OneBot 原始事件或由中间件合成的消息事件
-        /// @param runtime 本次处理使用的消息域运行时，调用期间必须保持有效
-        MessageContext(json event, const MessageRuntime &runtime);
+        /// @param runtime 本次处理使用的消息域运行时
+        MessageContext(json event, std::shared_ptr<const MessageRuntime> runtime);
 
         /// @brief 获取当前可变事件
         /// @return 在消息模型创建前可由归一化中间件替换的事件 JSON
@@ -31,19 +32,22 @@ namespace insoulforge {
         /// @return 注入到所属 MessagePipeline 的运行时
         [[nodiscard]] const MessageRuntime &runtime() const noexcept;
 
-        /// @brief 用归一化后的事件创建 QQ 消息模型
+        /// @brief 获取可跨后台 Agent 任务持有的运行时句柄
+        [[nodiscard]] const std::shared_ptr<const MessageRuntime> &runtimeHandle() const noexcept;
+
+        /// @brief 用归一化后的事件创建 OneBot 消息模型
         /// @pre 事件已被归一化为 `post_type=message`。
         void createMessage();
 
-        /// @brief 获取已创建的 QQ 消息模型
+        /// @brief 获取已创建的 OneBot 消息模型
         /// @pre 已调用 createMessage()。
-        /// @return 可修改的 QQ 消息模型
-        [[nodiscard]] QQMessage &message();
+        /// @return 可修改的 OneBot 消息模型
+        [[nodiscard]] OneBotMessage &message();
 
-        /// @brief 获取已创建的 QQ 消息模型
+        /// @brief 获取已创建的 OneBot 消息模型
         /// @pre 已调用 createMessage()。
-        /// @return 只读 QQ 消息模型
-        [[nodiscard]] const QQMessage &message() const;
+        /// @return 只读 OneBot 消息模型
+        [[nodiscard]] const OneBotMessage &message() const;
 
         /// @brief 获取统一会话标识
         /// @pre 已调用 createMessage()。
@@ -70,6 +74,23 @@ namespace insoulforge {
         /// @return 当前会话的短期记忆管理器
         [[nodiscard]] MemoryManager &memory();
 
+        /// @brief 标记当前消息已经通过管理命令识别
+        void markCommand() noexcept;
+
+        /// @brief 判断当前消息是否应按管理命令处理
+        [[nodiscard]] bool isCommand() const noexcept;
+
+        /// @brief 保存由 Agent 节点准备、待后处理节点启动的后台任务
+        /// @param task 包含 Agent 调用与回复发送的协程任务
+        void deferAgentTask(drogon::Task<> task);
+
+        /// @brief 判断当前消息是否存在待启动的 Agent 任务
+        [[nodiscard]] bool hasDeferredAgentTask() const noexcept;
+
+        /// @brief 取走待启动的 Agent 任务
+        /// @pre hasDeferredAgentTask() 返回 true。
+        [[nodiscard]] drogon::Task<> takeDeferredAgentTask();
+
         /// @brief 向当前消息所在的群聊或私聊发送回复
         /// @param content 待发送的回复文本
         /// @pre 已调用 createMessage()。
@@ -77,9 +98,11 @@ namespace insoulforge {
 
     private:
         json m_event; ///< 归一化前或归一化后的 OneBot 事件
-        std::optional<QQMessage> m_message; ///< MessageSetupMiddleware 创建的消息模型
+        std::optional<OneBotMessage> m_message; ///< MessageSetupMiddleware 创建的消息模型
         std::optional<ChatRecordManager> m_chatRecords; ///< 按需创建的聊天记录管理器
         std::optional<MemoryManager> m_memory; ///< 按需创建的短期记忆管理器
-        const MessageRuntime &m_runtime; ///< 当前链路注入的消息域依赖
+        std::shared_ptr<const MessageRuntime> m_runtime; ///< 当前链路注入的消息域依赖
+        bool m_isCommand{false}; ///< 是否已由命令识别阶段标记
+        std::optional<drogon::Task<>> m_deferredAgentTask; ///< Agent 节点准备、由后处理节点启动的后台任务
     };
 } // namespace insoulforge

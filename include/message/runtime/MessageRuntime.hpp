@@ -13,7 +13,7 @@
 namespace insoulforge {
     class ChatRecordManager;
     class MemoryManager;
-    class QQMessage;
+    class OneBotMessage;
 
     /// @brief 为消息处理中间件提供 Agent、回复与事件能力
     /// @details MessagePipeline 仅依赖此接口，不直接访问进程级单例。生产环境使用
@@ -33,14 +33,14 @@ namespace insoulforge {
         /// @param message 已格式化的入站消息
         /// @return Agent 决定回复时返回文本，否则返回 std::nullopt
         virtual drogon::Task<std::optional<std::string>> processAgent(
-          ChatRecordManager &chatRecords, MemoryManager &memory, const QQMessage &message) const = 0;
+          ChatRecordManager &chatRecords, MemoryManager &memory, const OneBotMessage &message) const = 0;
 
         /// @brief 向当前消息对应的会话发送文本回复
         /// @param message 用于确定群聊或私聊目标的入站消息
         /// @param chatRecords 当前会话的聊天记录
         /// @param content 待发送的回复文本
         virtual drogon::Task<> sendReply(
-          const QQMessage &message, const ChatRecordManager &chatRecords, std::string content) const = 0;
+          const OneBotMessage &message, const ChatRecordManager &chatRecords, std::string content) const = 0;
 
         /// @brief 发布消息域产生的领域事件
         /// @param event 待发布的事件

@@ -10,9 +10,22 @@
 #include <message/MessageMiddlewareCatalog.hpp>
 #include <message/MessagePipeline.hpp>
 #include <message/runtime/MessageRuntime.hpp>
+#include <model/OneBotMessage.hpp>
 #include <util/Logger.hpp>
 
 namespace insoulforge {
+    namespace {
+        /// @brief 从 OneBot 消息或通知事件提取会话 ID
+        /// @return 无法归属会话的事件返回 0
+        [[nodiscard]] uint64_t eventSessionId(const json &event) {
+            if (const uint64_t groupId = getUInt(event, "group_id", 0); groupId != 0) {
+                return groupId;
+            }
+            const uint64_t userId = getUInt(event, "user_id", getUInt(atOrNull(event, "sender"), "user_id", 0));
+            return userId == 0 ? 0 : userId | OneBotMessage::kPrivateSessionFlag;
+        }
+    } // namespace
+
     MessagePipeline &MessagePipeline::instance() {
         static MessagePipeline pipeline;
         return pipeline;
@@ -67,6 +80,31 @@ namespace insoulforge {
         m_middlewares.insert(m_middlewares.begin() + static_cast<std::ptrdiff_t>(index + 1), std::move(middleware));
     }
 
+    void MessagePipeline::enqueue(json event) {
+        ensureInitialized();
+        const uint64_t sessionId = eventSessionId(event);
+        if (sessionId == 0) {
+            drogon::async_run([this, event = std::move(event)]() mutable -> drogon::Task<> {
+                co_await process(std::move(event));
+            });
+            return;
+        }
+
+        bool shouldStartDraining = false;
+        {
+            std::lock_guard lock(m_queueMutex);
+            auto &[events, draining] = m_sessionQueues[sessionId];
+            events.push_back(std::move(event));
+            if (!draining) {
+                draining = true;
+                shouldStartDraining = true;
+            }
+        }
+        if (shouldStartDraining) {
+            drogon::async_run([this, sessionId]() -> drogon::Task<> { co_await drainSession(sessionId); });
+        }
+    }
+
     void MessagePipeline::ensureInitialized() const {
         if (!m_initialized) {
             throw std::logic_error("必须先初始化内置消息中间件");
@@ -77,8 +115,8 @@ namespace insoulforge {
         if (!middleware || middleware->id().empty()) {
             throw std::invalid_argument("消息中间件及其标识不能为空");
         }
-        if (std::any_of(m_middlewares.begin(), m_middlewares.end(),
-              [&middleware](const auto &existing) { return existing->id() == middleware->id(); })) {
+        if (std::ranges::any_of(
+              m_middlewares, [&middleware](const auto &existing) { return existing->id() == middleware->id(); })) {
             throw std::invalid_argument("消息中间件标识重复");
         }
     }
@@ -87,8 +125,8 @@ namespace insoulforge {
         if (anchorId.empty()) {
             throw std::invalid_argument("中间件锚点标识不能为空");
         }
-        const auto it = std::find_if(m_middlewares.begin(), m_middlewares.end(),
-          [anchorId](const auto &middleware) { return middleware->id() == anchorId; });
+        const auto it = std::ranges::find_if(
+          m_middlewares, [anchorId](const auto &middleware) { return middleware->id() == anchorId; });
         if (it == m_middlewares.end()) {
             throw std::out_of_range("未找到中间件锚点");
         }
@@ -97,7 +135,7 @@ namespace insoulforge {
 
     drogon::Task<> MessagePipeline::process(json event) const {
         ensureInitialized();
-        MessageContext context(std::move(event), *m_runtime);
+        MessageContext context(std::move(event), m_runtime);
         for (const auto &middleware: m_middlewares) {
             try {
                 // Stop 是正常的短路结果，例如非消息事件、命令或禁用会话。
@@ -115,6 +153,23 @@ namespace insoulforge {
                     context.logMessageId());
                 co_return;
             }
+        }
+    }
+
+    drogon::Task<> MessagePipeline::drainSession(const uint64_t sessionId) {
+        while (true) {
+            json event;
+            {
+                std::lock_guard lock(m_queueMutex);
+                const auto queueIt = m_sessionQueues.find(sessionId);
+                if (queueIt == m_sessionQueues.end() || queueIt->second.events.empty()) {
+                    m_sessionQueues.erase(sessionId);
+                    co_return;
+                }
+                event = std::move(queueIt->second.events.front());
+                queueIt->second.events.pop_front();
+            }
+            co_await process(std::move(event));
         }
     }
 } // namespace insoulforge

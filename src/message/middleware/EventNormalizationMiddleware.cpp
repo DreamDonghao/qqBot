@@ -4,106 +4,88 @@
 #include <atomic>
 #include <config/Config.hpp>
 #include <ctime>
-#include <event/DomainEvent.hpp>
-#include <fmt/format.h>
 #include <message/MessageContext.hpp>
 #include <message/middleware/EventNormalizationMiddleware.hpp>
-#include <message/runtime/MessageRuntime.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/OneBotClient.hpp>
-#include <storage/SessionStore.hpp>
-#include <util/CommonUtil.hpp>
+#include <util/JsonUtil.hpp>
 
 namespace insoulforge {
     namespace {
-        /// @brief 判断事件是否为 OneBot 拍一拍通知
-        /// @param event 待检查的 OneBot 事件
-        /// @return 事件字段完整且类型为拍一拍时返回 true
-        [[nodiscard]] bool isPokeNotice(const json &event) {
-            return getStr(event, "notice_type") == "notify" && getStr(event, "sub_type") == "poke" &&
-                   getUInt(event, "user_id", 0) != 0 && getUInt(event, "target_id", 0) != 0;
-        }
+        std::atomic<int64_t> nextSyntheticMessageId{9'100'000'000LL};
 
-        /// @brief 计算拍一拍事件所属的统一会话 ID
-        /// @param event 已确认是拍一拍的 OneBot 事件
-        /// @return 群会话 ID，或带私聊标志位的拍一拍发起者 QQ 号
-        [[nodiscard]] uint64_t pokeSessionId(const json &event) {
-            const uint64_t groupId = getUInt(event, "group_id", 0);
-            const uint64_t pokerId = getUInt(event, "user_id", 0);
-            return groupId != 0 ? groupId : pokerId | QQMessage::kPrivateSessionFlag;
-        }
+        /// @brief 为通知事件分配不会与 OneBot 实际消息冲突的合成消息 ID
+        [[nodiscard]] int64_t syntheticMessageId() { return nextSyntheticMessageId.fetch_add(1); }
 
-        /// @brief 获取拍一拍参与者的显示名称
-        /// @param qq 参与者 QQ 号
-        /// @param sessionId 用于请求日志关联的会话 ID
-        /// @return 本地缓存昵称、OneBot 查询昵称，或回退值“未知”
-        drogon::Task<std::string> resolvePokeName(const uint64_t qq, const uint64_t sessionId) {
-            if (std::string name = QQMessage::getQQName(qq); name != "未知") {
+        /// @brief 获取通知参与者的显示名称
+        /// @details 优先使用已缓存昵称；缓存未命中时回退 OneBot 查询，失败时保留“未知”。
+        drogon::Task<std::string> resolveDisplayName(const uint64_t qq, const uint64_t sessionId) {
+            if (std::string name = OneBotMessage::getQQName(qq); name != "未知") {
                 co_return name;
             }
-            const auto response = co_await OneBotClient::getStrangerInfo(qq, sessionId);
-            std::string name = getStr(atOrNull(response, "data"), "nickname");
+            const json response = co_await OneBotClient::getStrangerInfo(qq, sessionId);
+            const std::string name = getStr(atOrNull(response, "data"), "nickname");
             co_return name.empty() ? "未知" : name;
         }
 
-        /// @brief 处理拍一拍事件，必要时合成为一条普通文本消息
-        /// @param notice 已通过 isPokeNotice() 校验且会话已启用的事件
-        /// @return 戳机器人时返回合成消息；已处理或需忽略时返回 null JSON
-        drogon::Task<json> normalizePokeNotice(MessageContext &context, json notice) {
-            const auto &config = Config::instance();
-            const uint64_t pokerId = getUInt(notice, "user_id", 0);
-            const uint64_t targetId = getUInt(notice, "target_id", 0);
-            const uint64_t groupId = getUInt(notice, "group_id", 0);
-            if (pokerId == config.selfQQNumber) {
-                co_return json();
-            }
-
-            const uint64_t sessionId = groupId != 0 ? groupId : pokerId | QQMessage::kPrivateSessionFlag;
-            const std::string pokerName = co_await resolvePokeName(pokerId, sessionId);
-            const std::string text =
-              fmt::format("[拍一拍：{}({})]", co_await resolvePokeName(targetId, sessionId), targetId);
-
-            if (targetId != config.selfQQNumber) {
-                if (groupId == 0) {
-                    co_return json();
-                }
-                json record;
-                record["time"] = currentDateTime();
-                record["sender"]["name"] = pokerName;
-                record["sender"]["qq"] = std::to_string(pokerId);
-                record["text"] = text;
-                record["reply_to"] = nullptr;
-                const std::string recordContent = dumpJson(record);
-                const ChatRecordManager chatRecords(groupId);
-                chatRecords.addUserRecord(recordContent);
-                co_await context.runtime().publish(MessageRecordedEvent{
-                  .sessionId = groupId,
-                  .messageId = 0,
-                  .role = MessageRole::User,
-                  .recordContent = recordContent,
-                  .displayContent = text,
-                });
-                co_return json();
-            }
-
-            // 与 TaskScheduler 使用的 9000000000 区段隔离，避免召回与引用消息发生 ID 冲突。
-            static std::atomic<int64_t> syntheticMessageId{0};
+        /// @brief 构造所有合成通知消息的公共字段
+        [[nodiscard]] json createNotificationMessage(const json &notice, const uint64_t senderId) {
             json event;
             event["post_type"] = "message";
-            event["self_id"] = config.selfQQNumber;
-            event["time"] = static_cast<int64_t>(std::time(nullptr));
-            event["message_id"] = fmt::to_string(9100000000LL + syntheticMessageId.fetch_add(1));
-            event["raw_message"] = text;
-            event["sender"]["user_id"] = pokerId;
-            event["sender"]["nickname"] = pokerName;
-            if (groupId != 0) {
+            event["self_id"] = Config::instance().selfQQNumber;
+            event["time"] = getInt(notice, "time", static_cast<int>(std::time(nullptr)));
+            event["message_id"] = syntheticMessageId();
+            event["raw_message"] = "";
+            event["sender"]["user_id"] = senderId;
+            event["sender"]["nickname"] = OneBotMessage::getQQName(senderId);
+
+            if (const uint64_t groupId = getUInt(notice, "group_id", 0); groupId != 0) {
                 event["message_type"] = "group";
                 event["group_id"] = groupId;
             } else {
                 event["message_type"] = "private";
-                event["user_id"] = pokerId;
+                event["user_id"] = senderId;
             }
-            event["message"].push_back({{"type", "text"}, {"data", {{"text", text}}}});
+            return event;
+        }
+
+        /// @brief 将拍一拍通知转换为独立的 `poke` 消息段
+        drogon::Task<json> normalizePoke(const json &notice) {
+            const uint64_t actorId = getUInt(notice, "user_id", 0);
+            const uint64_t targetId = getUInt(notice, "target_id", 0);
+            if (actorId == 0 || targetId == 0 || actorId == Config::instance().selfQQNumber) {
+                co_return json();
+            }
+
+            const uint64_t sessionId = getUInt(notice, "group_id", 0) != 0
+                                         ? getUInt(notice, "group_id", 0)
+                                         : actorId | OneBotMessage::kPrivateSessionFlag;
+            json event = createNotificationMessage(notice, actorId);
+            event["message"].push_back({{"type", "poke"},
+              {"data", {{"actor_id", actorId},
+                           {"actor_name", co_await resolveDisplayName(actorId, sessionId)},
+                           {"target_id", targetId},
+                           {"target_name", co_await resolveDisplayName(targetId, sessionId)}}}});
             co_return event;
+        }
+
+        /// @brief 将群成员变动通知转换为独立的 `notification` 消息段
+        [[nodiscard]] json normalizeMembershipChange(const json &notice) {
+            const uint64_t memberId = getUInt(notice, "user_id", 0);
+            const uint64_t groupId = getUInt(notice, "group_id", 0);
+            if (memberId == 0 || groupId == 0) {
+                return json();
+            }
+
+            const std::string kind = getStr(notice, "notice_type") == "group_increase" ? "member_join" : "member_leave";
+            json event = createNotificationMessage(notice, memberId);
+            event["message"].push_back({{"type", "notification"},
+              {"data", {{"kind", kind},
+                           {"member_id", memberId},
+                           {"member_name", OneBotMessage::getQQName(memberId)},
+                           {"operator_id", getUInt(notice, "operator_id", 0)},
+                           {"sub_type", getStr(notice, "sub_type")}}}});
+            return event;
         }
     } // namespace
 
@@ -114,11 +96,15 @@ namespace insoulforge {
         if (getStr(event, "post_type") == "message") {
             co_return MessageFlow::Continue;
         }
-        if (!isPokeNotice(event) || !SessionStore::isSessionEnabled(pokeSessionId(event))) {
-            co_return MessageFlow::Stop;
-        }
 
-        event = co_await normalizePokeNotice(context, std::move(event));
+        if (getStr(event, "notice_type") == "notify" && getStr(event, "sub_type") == "poke") {
+            event = co_await normalizePoke(event);
+        } else if (const std::string noticeType = getStr(event, "notice_type");
+                   noticeType == "group_increase" || noticeType == "group_decrease") {
+            event = normalizeMembershipChange(event);
+        } else {
+            event = json();
+        }
         co_return event.is_null() ? MessageFlow::Stop : MessageFlow::Continue;
     }
 } // namespace insoulforge

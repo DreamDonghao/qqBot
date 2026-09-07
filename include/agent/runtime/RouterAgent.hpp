@@ -8,13 +8,13 @@
 #pragma once
 #include <agent/runtime/AgentTypes.hpp>
 #include <drogon/utils/coroutine.h>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/ChatRecordManager.hpp>
 
 namespace insoulforge {
     /// @brief 路由决策与规划
     /// @param chatRecords 聊天记录
-    /// @param message QQ 消息
+    /// @param message OneBot 消息
     /// @return 路由决策结果（包含回复策略）
-    [[nodiscard]] drogon::Task<RouterDecision> route(const ChatRecordManager &chatRecords, QQMessage message);
+    [[nodiscard]] drogon::Task<RouterDecision> route(const ChatRecordManager &chatRecords, OneBotMessage message);
 } // namespace insoulforge

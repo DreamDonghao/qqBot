@@ -10,7 +10,7 @@
 #include <event/DomainEvent.hpp>
 #include <event/EventBus.hpp>
 #include <fmt/core.h>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <optional>
 #include <service/ChatRecordManager.hpp>
 #include <service/MessageService.hpp>
@@ -122,9 +122,9 @@ namespace insoulforge {
                 // 后续轮次模型能从记录中看到自己发过这张表情
                 const ChatRecordManager chatRecords(sessionId);
                 std::optional<uint64_t> messageId;
-                if (QQMessage::isPrivateSession(sessionId)) {
+                if (OneBotMessage::isPrivateSession(sessionId)) {
                     messageId = co_await MessageService::sendPrivateMsg(
-                      sessionId & ~QQMessage::kPrivateSessionFlag, cqCode, chatRecords);
+                      sessionId & ~OneBotMessage::kPrivateSessionFlag, cqCode, chatRecords);
                 } else {
                     messageId = co_await MessageService::sendGroupMsg(sessionId, cqCode, chatRecords);
                 }
@@ -166,9 +166,9 @@ namespace insoulforge {
                 const auto sessionId = ctx.sessionId;
                 const ChatRecordManager chatRecords(sessionId);
                 std::optional<uint64_t> messageId;
-                if (QQMessage::isPrivateSession(sessionId)) {
+                if (OneBotMessage::isPrivateSession(sessionId)) {
                     messageId = co_await MessageService::sendPrivateMsg(
-                      sessionId & ~QQMessage::kPrivateSessionFlag, content, chatRecords);
+                      sessionId & ~OneBotMessage::kPrivateSessionFlag, content, chatRecords);
                 } else {
                     messageId = co_await MessageService::sendGroupMsg(sessionId, content, chatRecords);
                 }
@@ -385,7 +385,7 @@ namespace insoulforge {
                            "\"qq\":\"123456\"}}，用 at_user(qq=\"123456\") 来@他。@全体成员用 at_user(qq=\"all\")",
             .parameters = atParams,
             .handler = [](const json args, const ToolCallContext ctx) -> drogon::Task<std::string> {
-                if (QQMessage::isPrivateSession(ctx.sessionId)) {
+                if (OneBotMessage::isPrivateSession(ctx.sessionId)) {
                     co_return std::string("私聊中无法@成员，直接回复即可");
                 }
                 std::string qq = argString(args, "qq");
@@ -423,7 +423,7 @@ namespace insoulforge {
             .parameters = banParams,
             .handler = [](const json args, const ToolCallContext ctx) -> drogon::Task<std::string> {
                 const uint64_t sessionId = ctx.sessionId;
-                if (QQMessage::isPrivateSession(sessionId))
+                if (OneBotMessage::isPrivateSession(sessionId))
                     co_return std::string("私聊中无法禁言");
                 if (sessionId == 0)
                     co_return std::string("禁言失败: 无法获取群号");
@@ -462,7 +462,7 @@ namespace insoulforge {
             .parameters = pokeParams,
             .handler = [](const json args, const ToolCallContext ctx) -> drogon::Task<std::string> {
                 const uint64_t sessionId = ctx.sessionId;
-                if (QQMessage::isPrivateSession(sessionId)) {
+                if (OneBotMessage::isPrivateSession(sessionId)) {
                     co_return std::string("私聊中不支持拍一拍，直接回复即可");
                 }
                 if (sessionId == 0)
@@ -476,15 +476,21 @@ namespace insoulforge {
                     co_return std::string("拍一拍失败: 权限不足或用户不存在");
                 }
 
-                // 拍一拍不是消息（无 message_id），手动记入聊天记录并发布事件：
-                // 后续轮次模型能从记录中看到自己拍过谁，避免重复拍。
-                // 用 [拍一拍：xxx] 标记而非纯文本，防止模型误认为自己发过这条文字消息
-                const std::string pokeText = fmt::format("[拍一拍：{}({})]", QQMessage::getQQName(userId), userId);
+                // 拍一拍不是文字消息（无 message_id），以通知段记录，避免污染 text 字段。
+                const std::string targetName = OneBotMessage::getQQName(userId);
+                json notification;
+                notification["type"] = "poke";
+                notification["actor_id"] = Config::instance().selfQQNumber;
+                notification["actor_name"] = Config::instance().botName + "(我)";
+                notification["target_id"] = userId;
+                notification["target_name"] = targetName;
+                notification["direction"] = "outbound";
                 json msgJson;
                 msgJson["time"] = currentDateTime();
                 msgJson["sender"]["name"] = Config::instance().botName + "(我)";
                 msgJson["sender"]["qq"] = "self";
-                msgJson["text"] = pokeText;
+                msgJson["segments"] = json::array({notification});
+                msgJson["notifications"] = json::array({std::move(notification)});
                 const ChatRecordManager chatRecords(sessionId);
                 const std::string recordContent = dumpJson(msgJson);
                 chatRecords.addAssistantRecord(recordContent);
@@ -493,7 +499,7 @@ namespace insoulforge {
                   .messageId = 0,
                   .role = MessageRole::Assistant,
                   .recordContent = recordContent,
-                  .displayContent = pokeText,
+                  .displayContent = fmt::format("拍一拍 {}({})", targetName, userId),
                 });
                 co_return fmt::format("已拍一拍用户 {}", userId);
             },
@@ -586,8 +592,8 @@ namespace insoulforge {
                 const uint64_t sessionId = ctx.sessionId;
                 if (sessionId == 0)
                     co_return std::string("会话上下文缺失，无法确定提醒目标");
-                const bool isPrivateSession = QQMessage::isPrivateSession(sessionId);
-                const auto [sessionType, targetId] = QQMessage::parseSessionTarget(sessionId);
+                const bool isPrivateSession = OneBotMessage::isPrivateSession(sessionId);
+                const auto [sessionType, targetId] = OneBotMessage::parseSessionTarget(sessionId);
                 const bool isDaily = getBool(args, "daily");
 
                 TaskStore::ScheduledTask task;

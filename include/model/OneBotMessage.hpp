@@ -1,36 +1,50 @@
-/// @file QQMessage.hpp
-/// @brief QQ 消息模型 - 消息解析与格式化
+/// @file OneBotMessage.hpp
+/// @brief OneBot 入站消息模型
 /// @author donghao
 /// @date 2026-04-02
-/// @details 解析和处理 QQ 群消息，支持：
-///          - 消息格式化（日期、用户名、@提及、图片识别）
-///          - CQ 码解析（文本、表情、图片、回复引用）
-///          - 用户昵称管理（自定义昵称映射）
+/// @details 将 OneBot 消息段转换为可持久化的富内容条目。`text` 只保存文本段；图片、表情和
+///          通知事件分别保存到独立字段及有序 `segments`，供历史展示和 Agent 共同使用。
 
 #pragma once
 #include <drogon/drogon.h>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
 #include <util/JsonUtil.hpp>
 
 namespace insoulforge {
-    /// @brief QQ 消息模型类
-    /// @details 封装单条 QQ 群消息的解析和格式化
-    class QQMessage {
+    /// @brief 单条已归一化的 OneBot 入站消息
+    class OneBotMessage {
     public:
-        /// @brief 构造函数，从 JSON 解析消息
-        /// @param qqMessageJson OneBot 消息 JSON
-        explicit QQMessage(json qqMessageJson);
+        /// @brief 从已归一化的 OneBot 消息事件构造模型
+        /// @param event OneBot `post_type=message` 事件，通知事件也会在归一化后使用该形态
+        explicit OneBotMessage(json event);
 
         /// @brief 检查是否 @ 了机器人
         /// @return 是否 @ 了机器人
         [[nodiscard]] bool atMe() const;
 
-        /// @brief 检查是否高优先级消息：@机器人、私聊或系统定时任务触发。
-        /// 此类消息在并发控制中不允许被静默丢弃，而是取消当前处理并等待接管
-        /// （AgentSystem 抢占判断与 Router 硬规则共用该语义）
+        /// @brief 判断消息是否含有 QQ 原生表情段
+        /// @return 至少存在一个 `face` 段时返回 true
+        [[nodiscard]] bool hasFace() const;
+
+        /// @brief 判断消息是否是戳向机器人的拍一拍通知
+        /// @return 存在 `poke` 段且目标为机器人时返回 true
+        [[nodiscard]] bool isPokeForBot() const;
+
+        /// @brief 判断消息是否为无需 Agent 回复的旁观拍一拍
+        /// @return 存在 `poke` 段但目标不是机器人时返回 true
+        [[nodiscard]] bool isPassivePoke() const;
+
+        /// @brief 判断消息是否包含群成员变动通知
+        /// @return 至少存在一个 `member_join` 或 `member_leave` 通知段时返回 true
+        [[nodiscard]] bool hasMembershipNotification() const;
+
+        /// @brief 检查是否高优先级 Agent 消息：@机器人、私聊或系统定时任务触发。
+        /// @details 优先级只影响已完成入站处理的 Agent 阶段；不会打断正在执行的图片识别或记录。
         /// @return 是否高优先级
         [[nodiscard]] bool isPriorityMessage() const;
 
@@ -87,13 +101,14 @@ namespace insoulforge {
         /// @return 消息 ID
         [[nodiscard]] uint64_t getMessageId() const;
 
-        /// @brief 格式化消息（异步，可能需要识别图片）
-        /// @details 将消息转换为JSON格式，包含发送者、消息ID、内容等
-        drogon::Task<> formatMessage();
+        /// @brief 丰富消息内容（异步，可能识别图片）
+        /// @details 完成后生成可持久化条目。每张图片独立记录识别状态，单张失败不影响其他段。
+        drogon::Task<> enrichContent();
 
-        /// @brief 获取格式化后的消息（JSON格式）
-        /// @return 格式化后的JSON字符串
-        [[nodiscard]] std::string getFormatMessage() const;
+        /// @brief 获取可持久化的富内容条目
+        /// @pre 已调用 enrichContent()。
+        /// @return 紧凑 JSON 字符串
+        [[nodiscard]] const std::string &recordContent() const noexcept;
 
         /// @brief 获取原始消息文本（不含 CQ 码）
         /// @return 原始消息文本
@@ -118,8 +133,11 @@ namespace insoulforge {
         /// @return 发送者昵称
         [[nodiscard]] std::string getSenderQQName() const;
 
-        const json m_qqMessageJson; ///< OneBot 消息 JSON
-        std::string m_formatMessage; ///< 格式化后的消息（JSON格式）
+        /// @brief 判断原始消息段中是否存在指定类型
+        [[nodiscard]] bool hasSegment(std::string_view type) const;
+
+        const json m_event; ///< 已归一化的 OneBot 消息事件
+        std::string m_recordContent; ///< enrichContent 生成的富内容 JSON
         uint64_t m_replyTo{0}; ///< 引用的消息ID
         bool m_isAtMe{false}; ///< 是否 @ 了机器人
 

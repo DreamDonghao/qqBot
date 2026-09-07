@@ -42,7 +42,7 @@ namespace insoulforge {
         }
 
     private:
-        // 与 QQMessage::kPrivateSessionFlag 保持一致（util 层不反向依赖 model）
+        // 与 OneBotMessage::kPrivateSessionFlag 保持一致（util 层不反向依赖 model）
         static constexpr uint64_t kPrivateSessionFlag = 1ULL << 63;
 
         template<typename... Args>

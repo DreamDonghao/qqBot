@@ -1,6 +1,6 @@
 /// @file AgentSystem.hpp
 /// @brief Agent 系统 - 两层代理架构
-/// @details 协调两层代理流程处理 QQ 消息：
+/// @details 协调两层代理流程处理 OneBot 消息：
 ///          - Layer 1 (Router): 判断是否回复 + 规划策略
 ///          - Layer 2 (Executor): 执行回复生成
 ///
@@ -11,7 +11,7 @@
 #pragma once
 #include <atomic>
 #include <drogon/utils/coroutine.h>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <mutex>
 #include <optional>
 #include <service/ChatRecordManager.hpp>
@@ -36,10 +36,10 @@ namespace insoulforge {
         /// @brief 处理消息 - 主流程
         /// @param chatRecords 聊天记录管理器
         /// @param memory 长期记忆管理器
-        /// @param message QQ 消息
+        /// @param message OneBot 消息
         /// @return 回复内容（如果需要回复）
         drogon::Task<std::optional<std::string>> process(
-          const ChatRecordManager &chatRecords, const MemoryManager &memory, QQMessage message);
+          const ChatRecordManager &chatRecords, const MemoryManager &memory, OneBotMessage message);
 
     private:
         AgentSystem() = default;

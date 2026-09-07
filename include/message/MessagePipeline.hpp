@@ -2,14 +2,14 @@
 /// @brief 入站 OneBot 消息处理链路
 
 #pragma once
-
-#include <cstddef>
 #include <drogon/utils/coroutine.h>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <string_view>
-#include <vector>
-
+#include <unordered_map>
 #include <util/JsonUtil.hpp>
+#include <vector>
 
 namespace insoulforge {
     class MessageMiddleware;
@@ -68,6 +68,11 @@ namespace insoulforge {
         /// @pre 必须在 initialize() 完成后、开始接收消息前调用。
         void insertAfter(std::string_view anchorId, std::unique_ptr<MessageMiddleware> middleware);
 
+        /// @brief 将 OneBot 事件投入所属会话的顺序队列
+        /// @param event 已通过 HTTP JSON 校验的 OneBot 事件
+        /// @details 同一会话的归一化、图片识别与记录严格 FIFO；不同会话仍并行执行。该方法不等待处理完成。
+        void enqueue(json event);
+
         /// @brief 处理已经通过 HTTP 校验的 OneBot 事件
         /// @param event OneBot 上报的对象 JSON
         /// @throws std::logic_error 未完成 initialize() 时抛出
@@ -91,8 +96,20 @@ namespace insoulforge {
         /// @throws std::out_of_range 未找到锚点时抛出
         [[nodiscard]] size_t findMiddlewareIndex(std::string_view anchorId) const;
 
+        /// @brief 顺序消费一个会话的入站事件
+        /// @param sessionId 会话 ID
+        drogon::Task<> drainSession(uint64_t sessionId);
+
+        /// @brief 单个会话的待处理事件与消费状态
+        struct SessionQueue {
+            std::deque<json> events;
+            bool draining{false};
+        };
+
         std::vector<std::unique_ptr<MessageMiddleware>> m_middlewares; ///< 固定执行顺序的中间件列表
         std::shared_ptr<const MessageRuntime> m_runtime; ///< 中间件共享的消息域依赖
         bool m_initialized{false}; ///< 内置节点是否已通过校验并完整注册
+        std::mutex m_queueMutex; ///< 会话队列保护锁
+        std::unordered_map<uint64_t, SessionQueue> m_sessionQueues; ///< 按会话隔离的入站 FIFO 队列
     };
 } // namespace insoulforge

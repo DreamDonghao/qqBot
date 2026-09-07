@@ -6,7 +6,7 @@
 #include <config/Config.hpp>
 #include <controllers/AdminController.hpp>
 #include <controllers/AdminResponse.hpp>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/OneBotClient.hpp>
 #include <service/TaskScheduler.hpp>
 #include <spdlog/spdlog.h>
@@ -43,9 +43,9 @@ namespace {
         // 会话 ID 可能带私聊标志位（超过 JS Number 安全范围），同步提供字符串形式
         item["groupId"] = sessionId;
         item["groupIdStr"] = std::to_string(sessionId);
-        if (QQMessage::isPrivateSession(sessionId)) {
+        if (OneBotMessage::isPrivateSession(sessionId)) {
             item["sessionType"] = "private";
-            item["userId"] = sessionId & ~QQMessage::kPrivateSessionFlag;
+            item["userId"] = sessionId & ~OneBotMessage::kPrivateSessionFlag;
         }
         return item;
     }
@@ -300,11 +300,11 @@ Task<> AdminController::enableSession(HttpRequestPtr req, std::function<void(con
             callback(jsonResponse(AdminResponse::errorJson("QQ号无效")));
             co_return;
         }
-        sessionId = userId | QQMessage::kPrivateSessionFlag;
+        sessionId = userId | OneBotMessage::kPrivateSessionFlag;
     } else {
         // 前端以字符串传递（避免 JS 大数精度丢失），需安全解析而非 asUInt64()
         sessionId = jsonToUInt64(atOrNull(*body, "groupId"));
-        if (sessionId == 0 || QQMessage::isPrivateSession(sessionId)) {
+        if (sessionId == 0 || OneBotMessage::isPrivateSession(sessionId)) {
             callback(jsonResponse(AdminResponse::errorJson("群号无效")));
             co_return;
         }
@@ -314,7 +314,7 @@ Task<> AdminController::enableSession(HttpRequestPtr req, std::function<void(con
     // 自动获取会话名称（群聊为群名，私聊为 QQ 昵称）
     std::string groupName = co_await MessageService::fetchAndUpdateSessionName(sessionId);
 
-    json resp = AdminResponse::okJson(QQMessage::isPrivateSession(sessionId) ? "私聊已启用" : "群已启用");
+    json resp = AdminResponse::okJson(OneBotMessage::isPrivateSession(sessionId) ? "私聊已启用" : "群已启用");
     resp["groupName"] = groupName;
     callback(jsonResponse(resp));
     co_return;
@@ -530,7 +530,7 @@ Task<> AdminController::getSessionAffinity(
         // QQ 号以字符串返回（超过 JS Number 安全范围）
         item["qq"] = std::to_string(qq);
         // 昵称优先取运行时映射（含自定义昵称），缺失时回退 OneBot 实时查询
-        std::string name(QQMessage::getQQName(qq));
+        std::string name(OneBotMessage::getQQName(qq));
         if (name.empty() || name == "未知") {
             const auto info = co_await OneBotClient::getStrangerInfo(qq, gid);
             if (atOrNull(info, "data").contains("nickname")) {
@@ -561,7 +561,7 @@ Task<> AdminController::getScheduledTasks(
         co_return;
     }
 
-    const auto [sessionType, targetId] = QQMessage::parseSessionTarget(sid);
+    const auto [sessionType, targetId] = OneBotMessage::parseSessionTarget(sid);
     json list(json::array());
     for (const auto &task: TaskStore::getPendingScheduledTasksByTarget(sessionType, targetId)) {
         json item;
@@ -683,8 +683,8 @@ Task<> AdminController::saveQQConfig(HttpRequestPtr req, std::function<void(cons
     config.qqHttpHost = getStr(*body, "qqHttpHost");
     config.botName = getStr(*body, "botName", "小喵");
 
-    // 更新 QQMessage 的自定义名称
-    QQMessage::setCustomQQName(config.selfQQNumber, config.botName + "(我)");
+    // 更新 OneBotMessage 的自定义名称
+    OneBotMessage::setCustomQQName(config.selfQQNumber, config.botName + "(我)");
 
     callback(jsonResponse(AdminResponse::okJson("QQ Bot 配置已保存")));
     co_return;

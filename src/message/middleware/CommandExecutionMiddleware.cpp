@@ -1,16 +1,16 @@
-/// @file CommandMessageMiddleware.cpp
-/// @brief 管理命令处理中间件实现
+/// @file CommandExecutionMiddleware.cpp
+/// @brief 管理命令执行中间件实现
 
 #include <controllers/CommandHandler.hpp>
 #include <message/MessageContext.hpp>
-#include <message/middleware/CommandMessageMiddleware.hpp>
+#include <message/middleware/CommandExecutionMiddleware.hpp>
 #include <util/Logger.hpp>
 
 namespace insoulforge {
-    std::string_view CommandMessageMiddleware::id() const noexcept { return "command"; }
+    std::string_view CommandExecutionMiddleware::id() const noexcept { return "command_execution"; }
 
-    drogon::Task<MessageFlow> CommandMessageMiddleware::handle(MessageContext &context) const {
-        if (!isCommand(context.message())) {
+    drogon::Task<MessageFlow> CommandExecutionMiddleware::handle(MessageContext &context) const {
+        if (!context.isCommand()) {
             co_return MessageFlow::Continue;
         }
         Logger::session(context.sessionId()).info("收到命令消息: {}", context.message().getRawMessage());

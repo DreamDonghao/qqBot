@@ -8,6 +8,7 @@
 #pragma once
 #include <cstddef>
 #include <deque>
+#include <optional>
 
 #include <util/JsonUtil.hpp>
 
@@ -23,6 +24,12 @@ namespace insoulforge {
         /// @brief 构造函数
         /// @param sessionId 会话 ID（私聊会话带标志位）
         explicit ChatRecordManager(uint64_t sessionId);
+
+        /// @brief 使用已冻结的会话记录创建管理器
+        /// @param sessionId 会话 ID
+        /// @param records 当前 Agent 任务可见的记录快照（旧→新）
+        /// @details 写入方法仍写入真实存储；只有 getRecords() 从快照读取，避免后到消息改变已启动任务的上下文。
+        ChatRecordManager(uint64_t sessionId, std::deque<json> records);
 
         /// @brief 获取会话 ID
         /// @return 群号
@@ -42,5 +49,6 @@ namespace insoulforge {
 
     private:
         uint64_t m_sessionId; ///< 群号
+        std::optional<std::deque<json>> m_recordsSnapshot; ///< 可选的 Agent 上下文快照
     };
 } // namespace insoulforge

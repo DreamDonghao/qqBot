@@ -9,6 +9,9 @@ namespace insoulforge {
     std::string_view SessionEnabledMiddleware::id() const noexcept { return "session_enabled"; }
 
     drogon::Task<MessageFlow> SessionEnabledMiddleware::handle(MessageContext &context) const {
+        if (context.isCommand()) {
+            co_return MessageFlow::Continue;
+        }
         co_return SessionStore::isSessionEnabled(context.sessionId()) ? MessageFlow::Continue : MessageFlow::Stop;
     }
 } // namespace insoulforge

@@ -52,7 +52,7 @@ namespace insoulforge {
             cache.hits[messageId] = std::move(hits);
         }
 
-        /// @brief 后台召回：向量化 → topK 相似检索 → 按注入阈值过滤 → 写键（向量化失败不留键）
+        /// @brief 执行召回：向量化 → topK 相似检索 → 按注入阈值过滤 → 写键（向量化失败不留键）
         drogon::Task<> recallForMessage(const uint64_t sessionId, const uint64_t messageId, std::string text) {
             const auto embedding = co_await LlmClient::requestEmbedding(text, sessionId);
             if (!embedding) {
@@ -72,14 +72,14 @@ namespace insoulforge {
         }
     } // namespace
 
-    void MessageRecall::onRecordAdded(
+    drogon::Task<> MessageRecall::recallForRecord(
       const uint64_t sessionId, const std::string &contentJson, const bool isAssistant) {
         json content;
         if (!tryParseJson(contentJson, content) || !content.is_object())
-            return;
+            co_return;
         const uint64_t messageId = parseUInt64(getStr(content, "message_id"));
         if (messageId == 0)
-            return;
+            co_return;
 
         std::string text;
         if (!isAssistant)
@@ -90,8 +90,8 @@ namespace insoulforge {
             std::lock_guard lock(g_mutex);
             auto &cache = g_caches[sessionId];
             if (std::find(cache.order.begin(), cache.order.end(), messageId) != cache.order.end())
-                return; // 同一条消息重复入库
-            // 键入库即占位，与提示词最近 kRecentRecordCount 条记录对齐淘汰；空结果也占键防重复召回
+                co_return; // 同一条消息已完成或正在完成召回
+            // 任务启动即占位，与提示词最近 kRecentRecordCount 条记录对齐淘汰；空结果也占键防重复召回
             cache.order.push_back(messageId);
             while (cache.order.size() > kRecentRecordCount) {
                 cache.hits.erase(cache.order.front());
@@ -102,10 +102,7 @@ namespace insoulforge {
         }
 
         if (needRecall)
-            // async_run 接受"返回 Task 的可调用对象"，用 lambda 转发以在当前事件循环上启动后台召回
-            drogon::async_run([sessionId, messageId, text = std::move(text)]() -> drogon::Task<> {
-                return recallForMessage(sessionId, messageId, std::move(text));
-            });
+            co_await recallForMessage(sessionId, messageId, std::move(text));
     }
 
     std::vector<MessageRecallHit> MessageRecall::getHits(const uint64_t sessionId, const uint64_t messageId) {

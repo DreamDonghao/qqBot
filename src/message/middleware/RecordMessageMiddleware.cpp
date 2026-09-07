@@ -10,21 +10,21 @@ namespace insoulforge {
     std::string_view RecordMessageMiddleware::id() const noexcept { return "record_message"; }
 
     drogon::Task<MessageFlow> RecordMessageMiddleware::handle(MessageContext &context) const {
-        const std::string formattedMessage = context.message().getFormatMessage();
+        const std::string &recordContent = context.message().recordContent();
         const MessageRole role = context.message().getSelfQQNumber() == context.message().getSenderQQNumber()
                                    ? MessageRole::Assistant
                                    : MessageRole::User;
         if (context.message().getSelfQQNumber() == context.message().getSenderQQNumber()) {
-            context.chatRecords().addAssistantRecord(formattedMessage);
+            context.chatRecords().addAssistantRecord(recordContent);
         } else {
-            context.chatRecords().addUserRecord(formattedMessage);
+            context.chatRecords().addUserRecord(recordContent);
         }
         co_await context.runtime().publish(MessageRecordedEvent{
           .sessionId = context.sessionId(),
           .messageId = context.message().getMessageId(),
           .role = role,
-          .recordContent = formattedMessage,
-          .displayContent = formattedMessage,
+          .recordContent = recordContent,
+          .displayContent = recordContent,
         });
         co_return MessageFlow::Continue;
     }

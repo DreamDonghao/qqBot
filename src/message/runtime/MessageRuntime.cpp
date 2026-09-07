@@ -4,7 +4,7 @@
 #include <agent/runtime/AgentSystem.hpp>
 #include <event/EventBus.hpp>
 #include <message/runtime/MessageRuntime.hpp>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/ChatRecordManager.hpp>
 #include <service/MemoryManager.hpp>
 #include <service/MessageService.hpp>
@@ -17,12 +17,12 @@ namespace insoulforge {
             [[nodiscard]] bool isAgentRunning() const override { return AgentSystem::instance().isRunning(); }
 
             drogon::Task<std::optional<std::string>> processAgent(
-              ChatRecordManager &chatRecords, MemoryManager &memory, const QQMessage &message) const override {
+              ChatRecordManager &chatRecords, MemoryManager &memory, const OneBotMessage &message) const override {
                 co_return co_await AgentSystem::instance().process(chatRecords, memory, message);
             }
 
             drogon::Task<> sendReply(
-              const QQMessage &message, const ChatRecordManager &chatRecords, std::string content) const override {
+              const OneBotMessage &message, const ChatRecordManager &chatRecords, std::string content) const override {
                 if (message.isPrivate()) {
                     co_await MessageService::sendPrivateMsg(message.getUserId(), std::move(content), chatRecords);
                 } else {

@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <config/Config.hpp>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <ranges>
 #include <regex>
 #include <service/ChatRecordManager.hpp>
@@ -21,7 +21,10 @@
 namespace insoulforge {
     namespace {
         /// @brief 刷屏检测
-        [[nodiscard]] bool checkSpam(const QQMessage &message) {
+        [[nodiscard]] bool checkSpam(const OneBotMessage &message) {
+            if (message.hasFace() || message.isPokeForBot() || message.hasMembershipNotification()) {
+                return false;
+            }
             std::string rawMsg = message.getRawMessage();
             std::erase_if(rawMsg, [](const char c) { return std::isspace(static_cast<unsigned char>(c)); });
 
@@ -29,12 +32,6 @@ namespace insoulforge {
                 return true;
             if (rawMsg.length() <= 2)
                 return true;
-
-            // 纯表情包
-            static const std::regex facePattern(R"(^\[CQ:face.*\]$)");
-            if (rawMsg.find("[CQ:face") != std::string::npos && std::regex_match(rawMsg, facePattern)) {
-                return true;
-            }
 
             return false;
         }
@@ -52,19 +49,45 @@ namespace insoulforge {
             return text;
         }
 
-        /// @brief 提取 Router 需要的最小字段：sender + 压缩后 text
-        /// @details content 为 formatMessage 生成的 JSON，message_id/reply_to/qq/时间戳/images URL 对路由决策无用；
-        ///          机器人自身消息的 name 已带 "(我)" 后缀。历史存量可能是纯文本，仅保留 text
+        /// @brief 提取 Router 需要的最小上下文字段
+        /// @details 富内容保留为类型化摘要，排除图片 URL、文件标识和消息 ID 等对决策无价值的数据。
         [[nodiscard]] json compactRecord(const std::string &content) {
             if (json root; tryParseJson(content, root) && root.is_object()) {
                 json record;
                 if (const std::string name = getStr(atOrNull(root, "sender"), "name"); !name.empty())
                     record["sender"] = name;
-                record["text"] = compressCQCodes(getStr(root, "text"));
+                json message;
+                if (const std::string text = getStr(root, "text"); !text.empty())
+                    message["text"] = compressCQCodes(text);
+                if (root.contains("faces"))
+                    message["faces"] = root["faces"];
+                if (root.contains("notifications"))
+                    message["notifications"] = root["notifications"];
+                if (root.contains("images")) {
+                    json images = json::array();
+                    for (const auto &image: root["images"]) {
+                        json summary;
+                        summary["recognition_status"] = getStr(image, "recognition_status");
+                        if (const std::string description = getStr(image, "description"); !description.empty())
+                            summary["description"] = description;
+                        images.push_back(std::move(summary));
+                    }
+                    message["images"] = std::move(images);
+                }
+                if (root.contains("segments")) {
+                    json mentions = json::array();
+                    for (const auto &segment: root["segments"]) {
+                        if (getStr(segment, "type") == "at")
+                            mentions.push_back({{"qq", getStr(segment, "qq")}, {"name", getStr(segment, "name")}});
+                    }
+                    if (!mentions.empty())
+                        message["mentions"] = std::move(mentions);
+                }
+                record["content"] = std::move(message);
                 return record;
             }
             json record;
-            record["text"] = content;
+            record["content"]["text"] = content;
             return record;
         }
 
@@ -221,32 +244,38 @@ namespace insoulforge {
         }
     } // namespace
 
-    drogon::Task<RouterDecision> route(const ChatRecordManager &chatRecords, QQMessage message) {
+    drogon::Task<RouterDecision> route(const ChatRecordManager &chatRecords, OneBotMessage message) {
         // ========== Step 1: 硬规则检查（无需 LLM）==========
 
         // 1.0 系统定时任务触发 → 高优先级回复（调度器以系统账号合成的消息，确定性放行；
         //     需置于@提及检查之前，否则合成消息携带的@段会先命中导致此处日志不可见）
-        if (message.getSenderQQNumber() == QQMessage::kSystemAccountId) {
+        if (message.getSenderQQNumber() == OneBotMessage::kSystemAccountId) {
             Logger::session(chatRecords.getSessionId()).info("[Router] 定时任务触发 → 高优先级回复");
             co_return makeDecision(RouterDecision::Action::REPLY, "系统定时任务触发", 100, true);
         }
 
-        // 1.1 @提及检测 → 高优先级回复（私聊中每条消息都是直接对机器人说的，不适用）
+        // 1.1 自身消息检测 → 跳过
+        if (message.getSelfQQNumber() == message.getSenderQQNumber()) {
+            Logger::session(chatRecords.getSessionId()).info("[Router] 机器人自身消息 → 跳过");
+            co_return makeDecision(RouterDecision::Action::SKIP, "机器人自己发送的消息");
+        }
+
+        // 1.2 @提及检测 → 高优先级回复（私聊中每条消息都是直接对机器人说的，不适用）
         if (message.atMe()) {
             Logger::session(chatRecords.getSessionId()).info("[Router] @提及 → 高优先级回复");
             co_return makeDecision(RouterDecision::Action::REPLY, "用户@提及", 100, true);
         }
 
-        // 1.2 刷屏检测 → 跳过（仅群聊；私聊中短句如"嗯""哈哈"也应对话，放宽检查）
+        // 1.3 纯表情明确回应；表情内容保留在富消息字段中，不写入 text。
+        if (message.hasFace()) {
+            Logger::session(chatRecords.getSessionId()).info("[Router] 原生表情消息 → 回复");
+            co_return makeDecision(RouterDecision::Action::REPLY, "用户发送原生表情", 25);
+        }
+
+        // 1.4 刷屏检测 → 跳过（仅群聊；私聊中短句如"嗯""哈哈"也应对话，放宽检查）
         if (!message.isPrivate() && checkSpam(message)) {
             Logger::session(chatRecords.getSessionId()).info("[Router] 刷屏消息 → 跳过");
             co_return makeDecision(RouterDecision::Action::SKIP, "刷屏/纯表情");
-        }
-
-        // 1.3 自身消息检测 → 跳过
-        if (message.getSelfQQNumber() == message.getSenderQQNumber()) {
-            Logger::session(chatRecords.getSessionId()).info("[Router] 自身消息 → 跳过");
-            co_return makeDecision(RouterDecision::Action::SKIP, "机器人自己发送的消息");
         }
 
         // ========== Step 2: LLM 路由与规划（私聊使用私聊提示词）==========

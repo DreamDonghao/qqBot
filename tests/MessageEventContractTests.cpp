@@ -2,6 +2,7 @@
 /// @brief 消息链路与领域事件的契约测试
 
 #include <cstddef>
+#include <config/Config.hpp>
 #include <drogon/utils/coroutine.h>
 #include <event/EventBus.hpp>
 #include <event/subscribers/MemoryMaintenanceSubscriber.hpp>
@@ -11,9 +12,12 @@
 #include <iostream>
 #include <memory>
 #include <message/MessageMiddleware.hpp>
+#include <message/MessageContext.hpp>
 #include <message/MessagePipeline.hpp>
 #include <message/middleware/AgentAvailabilityMiddleware.hpp>
+#include <message/middleware/EventNormalizationMiddleware.hpp>
 #include <message/runtime/MessageRuntime.hpp>
+#include <model/OneBotMessage.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -41,12 +45,12 @@ namespace {
         }
 
         drogon::Task<std::optional<std::string>> processAgent(insoulforge::ChatRecordManager &,
-          insoulforge::MemoryManager &, const insoulforge::QQMessage &) const override {
+          insoulforge::MemoryManager &, const insoulforge::OneBotMessage &) const override {
             co_return std::nullopt;
         }
 
         drogon::Task<> sendReply(
-          const insoulforge::QQMessage &, const insoulforge::ChatRecordManager &, std::string) const override {
+          const insoulforge::OneBotMessage &, const insoulforge::ChatRecordManager &, std::string) const override {
             co_return;
         }
 
@@ -148,6 +152,87 @@ namespace {
         check(trace.empty(), "later middleware was short circuited", kTestName);
     }
 
+    void testRichMessageContentKeepsNonTextSegmentsOutOfText() {
+        constexpr std::string_view kTestName = "rich message content segments";
+        auto &config = insoulforge::Config::instance();
+        const uint64_t originalSelfId = config.selfQQNumber;
+        config.selfQQNumber = 42;
+        insoulforge::OneBotMessage::setCustomQQName(11, "Alice");
+        insoulforge::OneBotMessage::setCustomQQName(42, "Bot");
+
+        insoulforge::json event;
+        event["post_type"] = "message";
+        event["message_type"] = "group";
+        event["self_id"] = 42;
+        event["group_id"] = 100;
+        event["message_id"] = 7;
+        event["sender"] = {{"user_id", 11}, {"nickname", "Alice"}};
+        event["message"] = {{{"type", "face"}, {"data", {{"id", "178"}, {"raw", {{"faceText", "笑脸"}}}}}},
+          {{"type", "poke"}, {"data", {{"actor_id", 11}, {"target_id", 42}}}}};
+
+        insoulforge::OneBotMessage message(std::move(event));
+        drogon::sync_wait(message.enrichContent());
+        const insoulforge::json record = insoulforge::parseJson(message.recordContent());
+        check(!record.contains("text"), "non-text segments do not populate text", kTestName);
+        check(record["faces"].size() == 1, "face is stored independently", kTestName);
+        check(record["notifications"].size() == 1, "poke is stored independently", kTestName);
+        check(message.hasFace(), "face marker", kTestName);
+        check(message.isPokeForBot(), "bot poke marker", kTestName);
+
+        config.selfQQNumber = originalSelfId;
+    }
+
+    void testMembershipNoticeNormalizesToRichNotification() {
+        constexpr std::string_view kTestName = "membership notice normalization";
+        auto runtime = std::make_shared<TestMessageRuntime>(true);
+        insoulforge::json notice = {{"post_type", "notice"},
+          {"notice_type", "group_increase"},
+          {"group_id", 100},
+          {"user_id", 11},
+          {"operator_id", 12}};
+        insoulforge::MessageContext context(std::move(notice), runtime);
+        insoulforge::EventNormalizationMiddleware middleware;
+
+        const auto flow = drogon::sync_wait(middleware.handle(context));
+        check(flow == insoulforge::MessageFlow::Continue, "supported notice continues", kTestName);
+        context.createMessage();
+        check(context.message().hasMembershipNotification(), "membership marker", kTestName);
+        drogon::sync_wait(context.message().enrichContent());
+        const insoulforge::json record = insoulforge::parseJson(context.message().recordContent());
+        check(!record.contains("text"), "notification does not populate text", kTestName);
+        check(record["notifications"][0]["kind"] == "member_join", "join kind", kTestName);
+    }
+
+    void testPokeNoticeNormalizesToRichNotification() {
+        constexpr std::string_view kTestName = "poke notice normalization";
+        auto &config = insoulforge::Config::instance();
+        const uint64_t originalSelfId = config.selfQQNumber;
+        config.selfQQNumber = 42;
+        insoulforge::OneBotMessage::setCustomQQName(11, "Alice");
+        insoulforge::OneBotMessage::setCustomQQName(42, "Bot");
+
+        auto runtime = std::make_shared<TestMessageRuntime>(true);
+        insoulforge::json notice = {{"post_type", "notice"},
+          {"notice_type", "notify"},
+          {"sub_type", "poke"},
+          {"group_id", 100},
+          {"user_id", 11},
+          {"target_id", 42}};
+        insoulforge::MessageContext context(std::move(notice), runtime);
+        insoulforge::EventNormalizationMiddleware middleware;
+
+        const auto flow = drogon::sync_wait(middleware.handle(context));
+        check(flow == insoulforge::MessageFlow::Continue, "supported notice continues", kTestName);
+        context.createMessage();
+        check(context.message().isPokeForBot(), "bot poke marker", kTestName);
+        drogon::sync_wait(context.message().enrichContent());
+        const insoulforge::json record = insoulforge::parseJson(context.message().recordContent());
+        check(!record.contains("text"), "poke does not populate text", kTestName);
+        check(record["notifications"][0]["type"] == "poke", "poke type", kTestName);
+
+        config.selfQQNumber = originalSelfId;
+    }
+
     void testEventSubscriberExceptionDoesNotStopDispatch() {
         constexpr std::string_view kTestName = "event subscriber exception isolation";
         std::vector<std::string> trace;
@@ -228,6 +313,9 @@ int main() {
     testMiddlewareStopShortCircuits();
     testMiddlewareExceptionStopsChain();
     testPipelineUsesInjectedRuntime();
+    testRichMessageContentKeepsNonTextSegmentsOutOfText();
+    testMembershipNoticeNormalizesToRichNotification();
+    testPokeNoticeNormalizesToRichNotification();
     testEventSubscriberExceptionDoesNotStopDispatch();
     testEventSubscribersUseInjectedDependencies();
 

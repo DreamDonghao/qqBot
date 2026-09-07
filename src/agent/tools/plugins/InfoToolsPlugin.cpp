@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <config/Config.hpp>
 #include <fmt/core.h>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/LlmClient.hpp>
 #include <service/LongTermMemory.hpp>
 #include <service/ToolRegistry.hpp>
@@ -171,7 +171,7 @@ namespace insoulforge {
                 const uint64_t sessionId = ctx.sessionId;
                 if (sessionId == 0)
                     co_return std::string("会话上下文缺失，无法查询定时任务");
-                const auto [sessionType, targetId] = QQMessage::parseSessionTarget(sessionId);
+                const auto [sessionType, targetId] = OneBotMessage::parseSessionTarget(sessionId);
                 const auto tasks = TaskStore::getPendingScheduledTasksByTarget(sessionType, targetId);
                 if (tasks.empty()) {
                     co_return std::string("当前会话没有待触发的定时任务");

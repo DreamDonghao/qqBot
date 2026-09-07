@@ -17,7 +17,7 @@
 #include <iostream>
 #include <iterator>
 #include <message/MessagePipeline.hpp>
-#include <model/QQMessage.hpp>
+#include <model/OneBotMessage.hpp>
 #include <service/TaskScheduler.hpp>
 #include <spdlog/spdlog.h>
 #include <storage/AdminStore.hpp>
@@ -37,7 +37,7 @@ int main() {
         config.loadFromDatabase();
 
         // 初始化 QQ 昵称
-        QQMessage::setCustomQQName(config.selfQQNumber, config.botName + "(我)");
+        OneBotMessage::setCustomQQName(config.selfQQNumber, config.botName + "(我)");
 
         // 初始化 Agent 系统
         AgentSystem::instance().initialize();

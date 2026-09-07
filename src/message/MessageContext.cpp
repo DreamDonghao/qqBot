@@ -4,22 +4,26 @@
 #include <message/MessageContext.hpp>
 #include <message/runtime/MessageRuntime.hpp>
 
+#include <stdexcept>
+
 namespace insoulforge {
-    MessageContext::MessageContext(json event, const MessageRuntime &runtime) :
-        m_event(std::move(event)), m_runtime(runtime) {}
+    MessageContext::MessageContext(json event, std::shared_ptr<const MessageRuntime> runtime) :
+        m_event(std::move(event)), m_runtime(std::move(runtime)) {}
 
     json &MessageContext::event() { return m_event; }
 
-    const MessageRuntime &MessageContext::runtime() const noexcept { return m_runtime; }
+    const MessageRuntime &MessageContext::runtime() const noexcept { return *m_runtime; }
+
+    const std::shared_ptr<const MessageRuntime> &MessageContext::runtimeHandle() const noexcept { return m_runtime; }
 
     void MessageContext::createMessage() {
         // 事件归一化完成后不再需要原始 JSON，转移其所有权以避免复制消息段。
         m_message.emplace(std::move(m_event));
     }
 
-    QQMessage &MessageContext::message() { return *m_message; }
+    OneBotMessage &MessageContext::message() { return *m_message; }
 
-    const QQMessage &MessageContext::message() const { return *m_message; }
+    const OneBotMessage &MessageContext::message() const { return *m_message; }
 
     uint64_t MessageContext::sessionId() const { return message().getSessionId(); }
 
@@ -33,7 +37,7 @@ namespace insoulforge {
             return groupId;
         }
         const uint64_t userId = getUInt(m_event, "user_id", getUInt(atOrNull(m_event, "sender"), "user_id", 0));
-        return userId == 0 ? 0 : userId | QQMessage::kPrivateSessionFlag;
+        return userId == 0 ? 0 : userId | OneBotMessage::kPrivateSessionFlag;
     }
 
     uint64_t MessageContext::logMessageId() const {
@@ -56,7 +60,24 @@ namespace insoulforge {
         return *m_memory;
     }
 
+    void MessageContext::markCommand() noexcept { m_isCommand = true; }
+
+    bool MessageContext::isCommand() const noexcept { return m_isCommand; }
+
+    void MessageContext::deferAgentTask(drogon::Task<> task) { m_deferredAgentTask.emplace(std::move(task)); }
+
+    bool MessageContext::hasDeferredAgentTask() const noexcept { return m_deferredAgentTask.has_value(); }
+
+    drogon::Task<> MessageContext::takeDeferredAgentTask() {
+        if (!m_deferredAgentTask) {
+            throw std::logic_error("不存在待启动的 Agent 任务");
+        }
+        auto task = std::move(*m_deferredAgentTask);
+        m_deferredAgentTask.reset();
+        return task;
+    }
+
     drogon::Task<> MessageContext::sendReply(std::string content) {
-        co_await m_runtime.sendReply(message(), chatRecords(), std::move(content));
+        co_await m_runtime->sendReply(message(), chatRecords(), std::move(content));
     }
 } // namespace insoulforge

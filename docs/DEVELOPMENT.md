@@ -117,7 +117,7 @@ insoulforge/
 │   │   ├── middleware/       # 具体处理节点：事件、命令、会话、记录、Agent 与后处理
 │   │   └── runtime/          # 消息域运行时接口与生产适配器
 │   ├── config/               # Config：从数据库加载全部配置的单例
-│   ├── model/                # 数据模型：QQMessage
+│   ├── model/                # 数据模型：OneBotMessage
 │   ├── service/              # 服务层：MessageService / MemoryService / LlmClient / OneBotClient / LongTermMemory / ToolRegistry / ChatRecordManager / MemoryManager / SessionConfigManager 等
 │   ├── storage/              # SQLite 存储：Database / 各领域存储命名空间（Session / ChatRecord / Memory / Affinity / Prompt / Admin / Config / Usage / Tool / Task）
 │   └── util/                 # Log / Http / CommonUtil
@@ -140,19 +140,23 @@ OneBot HTTP POST /
 ProcessQQMessages::receiveMessages
     │ 解析 JSON 并立即确认 HTTP 请求
     ▼
+MessagePipeline::enqueue（按 sessionId 的入站 FIFO）
+    │ 同一会话顺序执行归一化、图片识别和记录；不同会话并行
+    ▼
 MessagePipeline
-    │ 1. EventNormalization：普通消息直通；拍一拍归一化、记录或忽略
+    │ 1. EventNormalization：普通消息直通；拍一拍、入群、退群归一化为通知段
     │ 2. AgentAvailability：Agent 未运行时终止
-    │ 3. MessageSetup：创建 QQMessage 和会话配置
-    │ 4. Command：命令消息交给 CommandHandler 后终止
+    │ 3. MessageSetup：创建 OneBotMessage 和会话配置
+    │ 4. CommandDetection：识别命令并标记
     │ 5. SessionEnabled：非命令消息的会话开关检查
-    │ 6. FormatMessage：@ 转换、图片识别等高成本格式化
+    │ 6. FormatMessage：构建 text / segments / images / faces / notifications，识别图片
     │ 7. RecordMessage：写入聊天记录并发布 MessageRecordedEvent
-    │ 8. AgentReply：调用两层 Agent 并按需发送文字回复
-    │ 9. PostProcess：发布 MessageProcessingCompletedEvent
+    │ 8. CommandExecution：执行已记录的命令并终止常规流程
+    │ 9. AgentReply：冻结聊天记录快照并准备两层 Agent 任务
+    │ 10. PostProcess：后台启动 Agent 任务，完成后发布 MessageProcessingCompletedEvent
     ▼
 AgentSystem::process
-    │ 组内互斥（同群消息串行处理，防止上下文并发污染）
+    │ 同会话 Agent 代际控制（优先消息取消普通 Agent 任务）
     ▼
 Layer 1: RouterAgent
     │ 输入：最近聊天记录 + 长期记忆 + 群配置
@@ -170,9 +174,10 @@ MessageService::sendGroupMsg → OneBot API
 消息处理的几个约束：
 
 - 命令先于启用检查处理，因此管理员可以在禁用会话中继续使用 `/enable`、`/status` 等管理命令。
-- `QQMessage::formatMessage` 放在启用检查之后，避免禁用会话触发图片识别等 LLM 调用。
-- 同一会话串行处理。普通消息处理期间到达的普通消息会跳过；@ 机器人、私聊、系统定时任务等高优先级消息会尝试打断正在处理的普通消息。高优先级消息之间不互相打断，只排队等待。
-- 拍一拍 notice 不是普通消息；禁用会话直接跳过，已启用会话中再根据目标决定“合成普通消息”或“仅写聊天记录”。
+- `FormatMessageMiddleware` 放在启用检查之后，依次完成 `OneBotMessage::enrichContent`（包括图片识别）和本轮消息级向量召回，避免禁用会话触发 LLM 调用。图片、表情和通知不写入 `text`；有序 `segments` 是内容顺序的事实来源。
+- 同一会话的入站阶段严格 FIFO：正在执行的图片识别或向量召回不会被后到 @ 或系统任务中断，后到消息也无法抢先写入聊天记录。召回完成后才写入记录和创建 Agent 快照，因此本轮命中的长期记忆可稳定注入 Agent 上下文。
+- Agent 阶段与入站队列解耦，并持有任务启动时的聊天记录快照。@ 机器人、私聊和系统定时任务到达 Agent 阶段时可取消正在运行的普通 Agent 任务；取消是协作式的，会在 Router 或 Executor 请求返回后的检查点生效。
+- 拍一拍、入群、退群均归一化为通知消息。戳机器人的拍一拍和成员变动交由 Router 决策；旁观拍一拍只记录，不启动 Agent；机器人自己发出的拍一拍通知已在工具执行时记录，不重复处理。
 - 中间件按 `MessageMiddlewareCatalog` 中的注册顺序执行；每个节点只负责一个阶段，并通过 `MessageFlow::Stop` 短路后续处理。
 - 每个中间件调用均由 `MessagePipeline` 捕获异常；异常日志包含节点标识、会话 ID 和消息 ID，随后终止本次链路，不会再执行后续节点。
 - `MessagePipeline` 通过 `MessageRuntime` 获取 Agent 状态与处理、回复发送和领域事件发布能力。默认初始化会注入
@@ -185,7 +190,7 @@ MessageService::sendGroupMsg → OneBot API
 订阅者标识、会话 ID 与消息 ID，不会阻断其他订阅者或消息主处理。
 
 - `MessageRecordedEvent`：消息记录写入者发布；`MessageWebSocketSubscriber` 推送管理后台消息。
-- `MessageProcessingCompletedEvent`：`PostProcessMiddleware` 发布；`SessionStatisticsSubscriber` 更新会话统计，
+- `MessageProcessingCompletedEvent`：后台 Agent 任务结束后发布；`SessionStatisticsSubscriber` 更新会话统计，
   `MemoryMaintenanceSubscriber` 触发记忆提取与窗口滑动。
 
 新增事件时，在 `include/event/DomainEvent.hpp` 添加强类型载荷，再实现 `EventSubscriber` 并在
