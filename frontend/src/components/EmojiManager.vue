@@ -4,7 +4,7 @@
  * @brief 表情包库管理组件 - 展示和编辑 QQ 收藏表情（以实际收藏为基准）
  */
 import {inject, onMounted, ref, type Ref} from 'vue'
-import type {ApiResponse, Emoji} from '../vite-env.d'
+import type {ApiResponse, Emoji} from '../vite-env'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 

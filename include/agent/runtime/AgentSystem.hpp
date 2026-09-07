@@ -9,14 +9,13 @@
 ///          - Router REPLY → Executor 生成回复
 
 #pragma once
+#include <agent/runtime/AgentTypes.hpp>
 #include <atomic>
 #include <drogon/utils/coroutine.h>
 #include <model/OneBotMessage.hpp>
 #include <mutex>
-#include <optional>
 #include <service/ChatRecordManager.hpp>
 #include <service/MemoryManager.hpp>
-#include <string>
 #include <unordered_map>
 
 namespace insoulforge {
@@ -37,8 +36,8 @@ namespace insoulforge {
         /// @param chatRecords 聊天记录管理器
         /// @param memory 长期记忆管理器
         /// @param message OneBot 消息
-        /// @return 回复内容（如果需要回复）
-        drogon::Task<std::optional<std::string>> process(
+        /// @return 包含回复计划或跳过原因的结构化处理结果
+        drogon::Task<AgentProcessResult> process(
           const ChatRecordManager &chatRecords, const MemoryManager &memory, OneBotMessage message);
 
     private:
@@ -60,6 +59,7 @@ namespace insoulforge {
         std::mutex m_processingMutex;
 
         /// @brief 尝试开始处理会话消息
+        /// @param sessionId
         /// @param isPriority 本次要处理的消息是否优先
         /// @return 代际号（>0 成功），0 表示会话正在处理中
         uint64_t tryStartProcessing(uint64_t sessionId, bool isPriority);

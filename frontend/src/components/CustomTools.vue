@@ -5,7 +5,7 @@
  */
 import {computed, inject, nextTick, onMounted, reactive, ref, type Ref} from 'vue'
 import {marked} from 'marked'
-import type {ApiResponse} from '../vite-env.d'
+import type {ApiResponse} from '../vite-env'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 

@@ -173,7 +173,7 @@ namespace insoulforge {
         /// @return 召回条目（id + 内容 + 相似度）；Embedding 失败的查询跳过（召回是优化，不阻塞记忆流程）
         drogon::Task<std::vector<SimilarMemory>> recallForMerge(
           std::vector<std::string> newMemories, const uint64_t sessionId) {
-            const float threshold = static_cast<float>(Config::instance().longTermRecallThreshold);
+            const auto threshold = static_cast<float>(Config::instance().longTermRecallThreshold);
             std::unordered_map<int64_t, SimilarMemory> recalled;
 
             for (const auto &memory: newMemories) {
@@ -438,7 +438,7 @@ namespace insoulforge {
             const size_t batchEnd = std::min(processed + kMaxExtractBatch, toDrop);
             // 附带后续最多 10 条做上下文连贯（可能来自待删除区或保留区，重复内容由归类合并去重）
             const size_t overlapEnd = std::min(records.size(), batchEnd + kOverlapCount);
-            const std::string chunkText = formatRecordsText(records, processed, overlapEnd);
+            std::string chunkText = formatRecordsText(records, processed, overlapEnd);
 
             Logger::session(sessionId).info("记忆提取: 待删第 {}-{} 条（共 {} 条）", processed + 1, batchEnd, toDrop);
 

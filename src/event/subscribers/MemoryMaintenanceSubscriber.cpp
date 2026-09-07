@@ -21,6 +21,10 @@ namespace insoulforge {
         auto memoryMaintainer = m_memoryMaintainer;
         eventBus.subscribe<MessageProcessingCompletedEvent>(id(),
           [memoryMaintainer = std::move(memoryMaintainer)](
-            const MessageProcessingCompletedEvent &event) -> drogon::Task<> { co_await memoryMaintainer(event); });
+            const MessageProcessingCompletedEvent &event) -> drogon::Task<> {
+              if (isConversationProcessingOutcome(event.outcome)) {
+                  co_await memoryMaintainer(event);
+              }
+          });
     }
 } // namespace insoulforge

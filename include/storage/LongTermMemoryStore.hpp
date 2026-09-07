@@ -20,9 +20,9 @@ namespace insoulforge {
 
     /// @brief 相似检索命中（含 id，供召回合并后删除被取代的原条目）
     struct SimilarMemory {
-        int64_t id;
+        int64_t id{0};
         std::string content;
-        float similarity;
+        float similarity{0.0F};
     };
 
     /// @brief 长期记忆存储

@@ -4,13 +4,13 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
+#include <event/DomainEvent.hpp>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include <model/OneBotMessage.hpp>
 #include <service/ChatRecordManager.hpp>
-#include <service/MemoryManager.hpp>
 
 namespace insoulforge {
     class MessageRuntime;
@@ -69,40 +69,29 @@ namespace insoulforge {
         /// @return 当前会话的聊天记录管理器
         [[nodiscard]] ChatRecordManager &chatRecords();
 
-        /// @brief 获取当前会话的短期记忆管理器，首次调用时构造
-        /// @pre 已调用 createMessage()。
-        /// @return 当前会话的短期记忆管理器
-        [[nodiscard]] MemoryManager &memory();
-
         /// @brief 标记当前消息已经通过管理命令识别
         void markCommand() noexcept;
 
         /// @brief 判断当前消息是否应按管理命令处理
         [[nodiscard]] bool isCommand() const noexcept;
 
-        /// @brief 保存由 Agent 节点准备、待后处理节点启动的后台任务
-        /// @param task 包含 Agent 调用与回复发送的协程任务
-        void deferAgentTask(drogon::Task<> task);
+        /// @brief 保存由路由节点准备、待完成节点启动的后台任务
+        /// @param task 返回本次消息主处理分支结果的协程任务
+        void deferProcessingTask(drogon::Task<MessageProcessingOutcome> task);
 
-        /// @brief 判断当前消息是否存在待启动的 Agent 任务
-        [[nodiscard]] bool hasDeferredAgentTask() const noexcept;
+        /// @brief 判断当前消息是否存在待启动的主处理任务
+        [[nodiscard]] bool hasDeferredProcessingTask() const noexcept;
 
-        /// @brief 取走待启动的 Agent 任务
-        /// @pre hasDeferredAgentTask() 返回 true。
-        [[nodiscard]] drogon::Task<> takeDeferredAgentTask();
-
-        /// @brief 向当前消息所在的群聊或私聊发送回复
-        /// @param content 待发送的回复文本
-        /// @pre 已调用 createMessage()。
-        drogon::Task<> sendReply(std::string content);
+        /// @brief 取走待启动的主处理任务
+        /// @pre hasDeferredProcessingTask() 返回 true。
+        [[nodiscard]] drogon::Task<MessageProcessingOutcome> takeDeferredProcessingTask();
 
     private:
         json m_event; ///< 归一化前或归一化后的 OneBot 事件
         std::optional<OneBotMessage> m_message; ///< MessageSetupMiddleware 创建的消息模型
         std::optional<ChatRecordManager> m_chatRecords; ///< 按需创建的聊天记录管理器
-        std::optional<MemoryManager> m_memory; ///< 按需创建的短期记忆管理器
         std::shared_ptr<const MessageRuntime> m_runtime; ///< 当前链路注入的消息域依赖
         bool m_isCommand{false}; ///< 是否已由命令识别阶段标记
-        std::optional<drogon::Task<>> m_deferredAgentTask; ///< Agent 节点准备、由后处理节点启动的后台任务
+        std::optional<drogon::Task<MessageProcessingOutcome>> m_deferredProcessingTask; ///< 路由节点准备的后台任务
     };
 } // namespace insoulforge

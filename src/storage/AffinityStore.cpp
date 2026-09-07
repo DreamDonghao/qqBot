@@ -7,8 +7,8 @@
 #include <storage/Database.hpp>
 #include <storage/Statement.hpp>
 
-namespace insoulforge {
-    namespace AffinityStore {
+
+    namespace insoulforge::AffinityStore {
         std::unordered_map<uint64_t, int> getAffinityMap(const uint64_t sessionId) {
             const auto &db = Database::instance();
             std::shared_lock lock(db.mutex());
@@ -34,5 +34,4 @@ namespace insoulforge {
             stmt.bind(4, delta);
             stmt.exec();
         }
-    } // namespace AffinityStore
-} // namespace insoulforge
+    } // namespace insoulforge::AffinityStore

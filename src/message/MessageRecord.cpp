@@ -159,7 +159,7 @@ namespace insoulforge::MessageRecord {
         size_t cursor = 0;
         for (std::sregex_iterator it(content.begin(), content.end(), cqPattern), end; it != end; ++it) {
             const std::smatch &match = *it;
-            const size_t matchStart = static_cast<size_t>(match.position());
+            const auto matchStart = static_cast<size_t>(match.position());
             appendText(segments, std::string_view(content).substr(cursor, matchStart - cursor));
             cursor = matchStart + static_cast<size_t>(match.length());
 

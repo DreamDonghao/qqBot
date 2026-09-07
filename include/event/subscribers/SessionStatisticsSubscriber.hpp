@@ -9,7 +9,7 @@
 #include <event/EventSubscriber.hpp>
 
 namespace insoulforge {
-    /// @brief 在消息主处理完成后更新会话统计数据
+    /// @brief 在普通对话主处理完成后更新会话统计数据
     class SessionStatisticsSubscriber final : public EventSubscriber {
     public:
         /// @brief 记录一条已完成消息的统计数据

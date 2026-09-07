@@ -38,7 +38,7 @@ namespace insoulforge {
         return registry;
     }
 
-    bool ToolRegistry::registerPlugin(std::string pluginId, PluginRegistrar registrar) {
+    bool ToolRegistry::registerPlugin(std::string pluginId, const PluginRegistrar &registrar) {
         if (pluginId.empty() || !registrar || !m_activePluginId.empty()) {
             spdlog::error("工具插件注册失败：插件 ID、注册函数无效或发生嵌套注册");
             return false;

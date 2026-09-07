@@ -399,7 +399,7 @@ onUnmounted(() => {
   color: var(--text-light);
   margin-bottom: 6px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .ov-value {

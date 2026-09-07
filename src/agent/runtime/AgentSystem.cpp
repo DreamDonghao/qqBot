@@ -31,16 +31,16 @@ namespace insoulforge {
         m_initialized = true;
     }
 
-    drogon::Task<std::optional<std::string>> AgentSystem::process(
+    drogon::Task<AgentProcessResult> AgentSystem::process(
       const ChatRecordManager &chatRecords, const MemoryManager &memory, OneBotMessage message) {
         if (!isRunning()) {
-            co_return std::nullopt;
+            co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Unavailable};
         }
 
         const uint64_t sessionId = message.getSessionId();
         if (!m_initialized) {
             Logger::session(sessionId).error("AgentSystem 未初始化");
-            co_return std::nullopt;
+            co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Unavailable};
         }
 
         const bool isPriority = message.isPriorityMessage();
@@ -56,7 +56,7 @@ namespace insoulforge {
                 } while (generation == 0);
             } else {
                 Logger::session(sessionId).debug("正在处理中，跳过");
-                co_return std::nullopt;
+                co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Busy};
             }
         }
 
@@ -82,13 +82,13 @@ namespace insoulforge {
         // 检查处理代际是否被 @消息取消
         if (!isCurrentGeneration(sessionId, generation)) {
             Logger::session(sessionId).info("[Router] 处理被新消息中断");
-            co_return std::nullopt;
+            co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Cancelled};
         }
 
         // Router 决定不回复
         if (!decision.shouldReply) {
             Logger::session(sessionId).info("[Router] 决定不回复: {}", decision.reason);
-            co_return std::nullopt;
+            co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Skipped};
         }
 
         // ========== Layer 2: Executor Agent（执行回复）==========
@@ -99,16 +99,19 @@ namespace insoulforge {
         // 检查处理代际是否被 @消息取消
         if (!isCurrentGeneration(sessionId, generation)) {
             Logger::session(sessionId).info("[Executor] 处理被新消息中断");
-            co_return std::nullopt;
+            co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Cancelled};
         }
 
         if (!reply || !reply->shouldReply || reply->content.empty()) {
             Logger::session(sessionId).error("[Executor] 执行失败或无回复");
-            co_return std::nullopt;
+            co_return AgentProcessResult{.outcome = AgentProcessResult::Outcome::Failed};
         }
 
         Logger::session(sessionId).info("======== 处理完成 ========");
-        co_return cleanReplyContent(reply->content);
+        co_return AgentProcessResult{
+          .outcome = AgentProcessResult::Outcome::Reply,
+          .content = cleanReplyContent(reply->content),
+        };
     }
 
     uint64_t AgentSystem::tryStartProcessing(const uint64_t sessionId, const bool isPriority) {

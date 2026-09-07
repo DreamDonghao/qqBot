@@ -2,8 +2,8 @@
 /// @brief 入站 OneBot 消息处理链路
 
 #pragma once
-#include <drogon/utils/coroutine.h>
 #include <deque>
+#include <drogon/utils/coroutine.h>
 #include <memory>
 #include <mutex>
 #include <string_view>

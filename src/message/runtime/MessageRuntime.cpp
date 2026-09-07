@@ -16,7 +16,7 @@ namespace insoulforge {
         public:
             [[nodiscard]] bool isAgentRunning() const override { return AgentSystem::instance().isRunning(); }
 
-            drogon::Task<std::optional<std::string>> processAgent(
+            drogon::Task<AgentProcessResult> processAgent(
               ChatRecordManager &chatRecords, MemoryManager &memory, const OneBotMessage &message) const override {
                 co_return co_await AgentSystem::instance().process(chatRecords, memory, message);
             }

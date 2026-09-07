@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include <agent/runtime/AgentTypes.hpp>
 #include <drogon/utils/coroutine.h>
 #include <memory>
-#include <optional>
 #include <string>
 
 #include <event/DomainEvent.hpp>
@@ -31,8 +31,8 @@ namespace insoulforge {
         /// @param chatRecords 当前会话的聊天记录
         /// @param memory 当前会话的短期记忆
         /// @param message 已格式化的入站消息
-        /// @return Agent 决定回复时返回文本，否则返回 std::nullopt
-        virtual drogon::Task<std::optional<std::string>> processAgent(
+        /// @return 包含回复计划、跳过、取消或繁忙状态的结构化处理结果
+        virtual drogon::Task<AgentProcessResult> processAgent(
           ChatRecordManager &chatRecords, MemoryManager &memory, const OneBotMessage &message) const = 0;
 
         /// @brief 向当前消息对应的会话发送文本回复

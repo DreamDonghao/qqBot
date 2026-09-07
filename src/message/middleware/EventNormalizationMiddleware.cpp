@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <config/Config.hpp>
-#include <ctime>
 #include <message/MessageContext.hpp>
 #include <message/middleware/EventNormalizationMiddleware.hpp>
 #include <model/OneBotMessage.hpp>
@@ -12,7 +11,7 @@
 
 namespace insoulforge {
     namespace {
-        std::atomic<int64_t> nextSyntheticMessageId{9'100'000'000LL};
+        std::atomic nextSyntheticMessageId{9'100'000'000LL};
 
         /// @brief 为通知事件分配不会与 OneBot 实际消息冲突的合成消息 ID
         [[nodiscard]] int64_t syntheticMessageId() { return nextSyntheticMessageId.fetch_add(1); }
@@ -62,29 +61,24 @@ namespace insoulforge {
                                          : actorId | OneBotMessage::kPrivateSessionFlag;
             json event = createNotificationMessage(notice, actorId);
             event["message"].push_back({{"type", "poke"},
-              {"data", {{"actor_id", actorId},
-                           {"actor_name", co_await resolveDisplayName(actorId, sessionId)},
-                           {"target_id", targetId},
-                           {"target_name", co_await resolveDisplayName(targetId, sessionId)}}}});
+              {"data", {{"actor_id", actorId}, {"actor_name", co_await resolveDisplayName(actorId, sessionId)},
+                         {"target_id", targetId}, {"target_name", co_await resolveDisplayName(targetId, sessionId)}}}});
             co_return event;
         }
 
         /// @brief 将群成员变动通知转换为独立的 `notification` 消息段
         [[nodiscard]] json normalizeMembershipChange(const json &notice) {
             const uint64_t memberId = getUInt(notice, "user_id", 0);
-            const uint64_t groupId = getUInt(notice, "group_id", 0);
-            if (memberId == 0 || groupId == 0) {
-                return json();
+            if (const uint64_t groupId = getUInt(notice, "group_id", 0); memberId == 0 || groupId == 0) {
+                return {};
             }
 
             const std::string kind = getStr(notice, "notice_type") == "group_increase" ? "member_join" : "member_leave";
             json event = createNotificationMessage(notice, memberId);
             event["message"].push_back({{"type", "notification"},
-              {"data", {{"kind", kind},
-                           {"member_id", memberId},
-                           {"member_name", OneBotMessage::getQQName(memberId)},
-                           {"operator_id", getUInt(notice, "operator_id", 0)},
-                           {"sub_type", getStr(notice, "sub_type")}}}});
+              {"data",
+                {{"kind", kind}, {"member_id", memberId}, {"member_name", OneBotMessage::getQQName(memberId)},
+                  {"operator_id", getUInt(notice, "operator_id", 0)}, {"sub_type", getStr(notice, "sub_type")}}}});
             return event;
         }
     } // namespace
@@ -100,7 +94,7 @@ namespace insoulforge {
         if (getStr(event, "notice_type") == "notify" && getStr(event, "sub_type") == "poke") {
             event = co_await normalizePoke(event);
         } else if (const std::string noticeType = getStr(event, "notice_type");
-                   noticeType == "group_increase" || noticeType == "group_decrease") {
+          noticeType == "group_increase" || noticeType == "group_decrease") {
             event = normalizeMembershipChange(event);
         } else {
             event = json();

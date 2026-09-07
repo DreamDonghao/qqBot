@@ -2,8 +2,6 @@
 /// @brief 图片视觉描述缓存存储
 
 #pragma once
-
-#include <cstddef>
 #include <optional>
 #include <string>
 

@@ -84,9 +84,8 @@ namespace insoulforge {
         ensureInitialized();
         const uint64_t sessionId = eventSessionId(event);
         if (sessionId == 0) {
-            drogon::async_run([this, event = std::move(event)]() mutable -> drogon::Task<> {
-                co_await process(std::move(event));
-            });
+            drogon::async_run(
+              [this, event = std::move(event)]() mutable -> drogon::Task<> { co_await process(std::move(event)); });
             return;
         }
 

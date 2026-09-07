@@ -37,28 +37,20 @@ namespace insoulforge {
     bool OneBotMessage::hasFace() const { return hasSegment("face"); }
 
     bool OneBotMessage::isPokeForBot() const {
-        for (const auto &item: atOrNull(m_event, "message")) {
-            if (getStr(item, "type") == "poke" &&
-                getUInt(atOrNull(item, "data"), "target_id", 0) == getSelfQQNumber()) {
-                return true;
-            }
-        }
-        return false;
+        return std::ranges::any_of(atOrNull(m_event, "message"), [selfId = getSelfQQNumber()](const json &item) {
+            return getStr(item, "type") == "poke" && getUInt(atOrNull(item, "data"), "target_id", 0) == selfId;
+        });
     }
 
     bool OneBotMessage::isPassivePoke() const { return hasSegment("poke") && !isPokeForBot(); }
 
     bool OneBotMessage::hasMembershipNotification() const {
-        for (const auto &item: atOrNull(m_event, "message")) {
-            if (getStr(item, "type") != "notification") {
-                continue;
-            }
+        return std::ranges::any_of(atOrNull(m_event, "message"), [](const json &item) {
+            if (getStr(item, "type") != "notification")
+                return false;
             const std::string kind = getStr(atOrNull(item, "data"), "kind");
-            if (kind == "member_join" || kind == "member_leave") {
-                return true;
-            }
-        }
-        return false;
+            return kind == "member_join" || kind == "member_leave";
+        });
     }
 
     bool OneBotMessage::isPriorityMessage() const {

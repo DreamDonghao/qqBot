@@ -13,7 +13,7 @@ import type {
   LongTermMemoryListResult,
   QQConfig,
   ScheduledTask
-} from '../vite-env.d'
+} from '../vite-env'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 const qqConfig = inject<QQConfig>('qqConfig')
@@ -1005,7 +1005,7 @@ onUnmounted(restoreWebSocket)
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   opacity: 0.7;
 }
 

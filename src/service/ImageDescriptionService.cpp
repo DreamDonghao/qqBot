@@ -38,8 +38,8 @@ namespace insoulforge::ImageDescriptionService {
         };
 
         struct GifInput {
-            const uint8_t *data;
-            size_t size;
+            const uint8_t *data{nullptr};
+            size_t size{0};
             size_t offset{0};
         };
 
@@ -146,7 +146,7 @@ namespace insoulforge::ImageDescriptionService {
         }
 
         [[nodiscard]] std::vector<size_t> selectGifFrames(GifFileType &gif) {
-            const size_t count = static_cast<size_t>(gif.ImageCount);
+            const auto count = static_cast<size_t>(gif.ImageCount);
             if (count <= kMaxGifSubmittedFrames) {
                 std::vector<size_t> all(count);
                 std::iota(all.begin(), all.end(), 0);
@@ -271,7 +271,9 @@ namespace insoulforge::ImageDescriptionService {
                         if (targetX < 0 || targetX >= width || targetY < 0 || targetY >= height)
                             continue;
                         const GifColorType color = colors->Colors[pixelIndex];
-                        const size_t offset = static_cast<size_t>((targetY * width + targetX) * 4);
+                        const size_t offset =
+                          (static_cast<size_t>(targetY) * static_cast<size_t>(width) + static_cast<size_t>(targetX)) *
+                          4;
                         canvas[offset] = color.Red;
                         canvas[offset + 1] = color.Green;
                         canvas[offset + 2] = color.Blue;

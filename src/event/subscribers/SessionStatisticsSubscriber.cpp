@@ -22,7 +22,9 @@ namespace insoulforge {
         eventBus.subscribe<MessageProcessingCompletedEvent>(id(),
           [statisticsRecorder = std::move(statisticsRecorder)](
             const MessageProcessingCompletedEvent &event) -> drogon::Task<> {
-              statisticsRecorder(event);
+              if (isConversationProcessingOutcome(event.outcome)) {
+                  statisticsRecorder(event);
+              }
               co_return;
           });
     }

@@ -6,12 +6,11 @@
 
 #pragma once
 #include <string>
-
 #include <util/JsonUtil.hpp>
 
-namespace insoulforge {
+
     /// @brief LLM 用量统计存储
-    namespace UsageStore {
+    namespace insoulforge::UsageStore {
         /// @brief 记录一次 LLM 调用用量
         void addUsageRecord(const std::string &role, const std::string &model, int promptTokens, int completionTokens,
           int totalTokens, int cachedTokens);
@@ -21,5 +20,4 @@ namespace insoulforge {
 
         /// @brief 获取最近调用明细
         [[nodiscard]] json getRecentUsage(int limit);
-    } // namespace UsageStore
-} // namespace insoulforge
+    } // namespace insoulforge::UsageStore

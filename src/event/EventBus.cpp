@@ -18,7 +18,7 @@ namespace insoulforge {
         initialize([](EventBus &eventBus) { EventSubscriberCatalog::registerBuiltinSubscribers(eventBus); });
     }
 
-    void EventBus::initialize(std::function<void(EventBus &)> registrar) {
+    void EventBus::initialize(const std::function<void(EventBus &)> &registrar) {
         if (m_initialized) {
             return;
         }

@@ -4,7 +4,7 @@
  * @brief 首页仪表盘 - bento 布局，各模块按需占位，填满整页
  */
 import {computed, inject, onMounted, onUnmounted, ref, type Ref} from 'vue'
-import type {LLMConfig, QQConfig} from '../vite-env.d'
+import type {LLMConfig, QQConfig} from '../vite-env'
 import {useToast} from '../composables/useToast'
 
 const qqConfig = inject<QQConfig>('qqConfig')
@@ -609,7 +609,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-light);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .kpi-value {

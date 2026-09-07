@@ -52,32 +52,22 @@ namespace insoulforge {
         return *m_chatRecords;
     }
 
-    MemoryManager &MessageContext::memory() {
-        if (!m_memory) {
-            // 只有 Agent 节点会访问短期记忆，延迟到实际使用时再构造。
-            m_memory.emplace(sessionId());
-        }
-        return *m_memory;
-    }
-
     void MessageContext::markCommand() noexcept { m_isCommand = true; }
 
     bool MessageContext::isCommand() const noexcept { return m_isCommand; }
 
-    void MessageContext::deferAgentTask(drogon::Task<> task) { m_deferredAgentTask.emplace(std::move(task)); }
-
-    bool MessageContext::hasDeferredAgentTask() const noexcept { return m_deferredAgentTask.has_value(); }
-
-    drogon::Task<> MessageContext::takeDeferredAgentTask() {
-        if (!m_deferredAgentTask) {
-            throw std::logic_error("不存在待启动的 Agent 任务");
-        }
-        auto task = std::move(*m_deferredAgentTask);
-        m_deferredAgentTask.reset();
-        return task;
+    void MessageContext::deferProcessingTask(drogon::Task<MessageProcessingOutcome> task) {
+        m_deferredProcessingTask.emplace(std::move(task));
     }
 
-    drogon::Task<> MessageContext::sendReply(std::string content) {
-        co_await m_runtime->sendReply(message(), chatRecords(), std::move(content));
+    bool MessageContext::hasDeferredProcessingTask() const noexcept { return m_deferredProcessingTask.has_value(); }
+
+    drogon::Task<MessageProcessingOutcome> MessageContext::takeDeferredProcessingTask() {
+        if (!m_deferredProcessingTask) {
+            throw std::logic_error("不存在待启动的主处理任务");
+        }
+        auto task = std::move(*m_deferredProcessingTask);
+        m_deferredProcessingTask.reset();
+        return task;
     }
 } // namespace insoulforge

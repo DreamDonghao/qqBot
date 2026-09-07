@@ -22,7 +22,7 @@ namespace insoulforge {
         constexpr std::chrono::seconds kFireLead{5};
 
         /// @brief 注入事件使用的本机接收接口地址（与 main.cpp 监听端口一致）
-        constexpr const char *kSelfBaseUrl = "http://127.0.0.1:7778";
+        constexpr auto kSelfBaseUrl = "http://127.0.0.1:7778";
 
         /// @brief 合成系统消息的发送者昵称与正文前缀
         constexpr std::string_view kSystemTaskLabel = "系统定时任务";
@@ -33,7 +33,7 @@ namespace insoulforge {
             const std::time_t now = std::time(nullptr);
             std::tm tm{};
             localtime_r(&lastTime, &tm);
-            std::time_t next = lastTime;
+            std::time_t next{};
             do {
                 tm.tm_mday += 1;
                 tm.tm_isdst = -1;
@@ -67,7 +67,7 @@ namespace insoulforge {
             json body;
             body["post_type"] = "message";
             body["self_id"] = config.selfQQNumber;
-            body["time"] = static_cast<int64_t>(std::time(nullptr));
+            body["time"] = std::time(nullptr);
             body["message_id"] = fmt::to_string(msgId);
             body["raw_message"] = text;
             body["sender"]["user_id"] = OneBotMessage::kSystemAccountId;
@@ -95,8 +95,7 @@ namespace insoulforge {
     TaskScheduler::~TaskScheduler() { stop(); }
 
     void TaskScheduler::start() {
-        bool expected = false;
-        if (!m_running.compare_exchange_strong(expected, true)) {
+        if (bool expected = false; !m_running.compare_exchange_strong(expected, true)) {
             return;
         }
 
@@ -245,7 +244,7 @@ namespace insoulforge {
         entry.fireTime = nextFire - kFireLead.count();
         Logger::session(logSessionId)
           .info("[Scheduler] 每日任务 #{} 已重排至下次触发：{}", entry.task.id, formatUnixTime(nextFire));
-        TaskScheduler::instance().pushEntry(std::move(entry));
+        instance().pushEntry(std::move(entry));
     }
 
     std::optional<std::time_t> TaskScheduler::parseTimeString(const std::string &input) {

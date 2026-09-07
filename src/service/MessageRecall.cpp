@@ -61,7 +61,7 @@ namespace insoulforge {
                 co_return;
             }
 
-            const float threshold = static_cast<float>(Config::instance().longTermInjectThreshold);
+            const auto threshold = static_cast<float>(Config::instance().longTermInjectThreshold);
             std::vector<MessageRecallHit> hits;
             for (auto &hit: LongTermMemoryStore::searchSimilar(sessionId, *embedding, kRecallTopK)) {
                 if (hit.similarity >= threshold)
@@ -82,7 +82,7 @@ namespace insoulforge {
         if (messageId == 0)
             co_return;
 
-        const std::string text = isAssistant ? "" : MessageRecord::extractRecallText(content);
+        std::string text = isAssistant ? "" : MessageRecord::extractRecallText(content);
         const bool needRecall = !isAssistant && utf8Length(text) > kMinRecallChars;
 
         {

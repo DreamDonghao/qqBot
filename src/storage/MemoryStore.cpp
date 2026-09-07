@@ -7,8 +7,7 @@
 #include <storage/MemoryStore.hpp>
 #include <storage/Statement.hpp>
 
-namespace insoulforge {
-    namespace MemoryStore {
+    namespace insoulforge::MemoryStore {
         std::string getShortTermMemory(const uint64_t sessionId) {
             const auto &db = Database::instance();
             std::shared_lock lock(db.mutex());
@@ -51,5 +50,4 @@ namespace insoulforge {
             stmt.bind(3, watermarkId);
             stmt.exec();
         }
-    } // namespace MemoryStore
-} // namespace insoulforge
+    } // namespace insoulforge::MemoryStore

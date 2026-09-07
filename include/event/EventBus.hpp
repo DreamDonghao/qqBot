@@ -34,7 +34,7 @@ namespace insoulforge {
         /// @throws std::invalid_argument 注册器为空、订阅者无效或标识重复时抛出
         /// @pre 必须在消息处理链路开始前调用。
         /// @details 用于自定义组合和契约测试；重复调用无副作用。
-        void initialize(std::function<void(EventBus &)> registrar);
+        void initialize(const std::function<void(EventBus &)> &registrar);
 
         /// @brief 为指定事件类型注册订阅者
         /// @tparam Event 事件载荷类型

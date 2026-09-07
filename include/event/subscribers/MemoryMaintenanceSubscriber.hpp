@@ -10,7 +10,7 @@
 #include <event/EventSubscriber.hpp>
 
 namespace insoulforge {
-    /// @brief 在消息主处理完成后按窗口条件维护会话记忆
+    /// @brief 在普通对话主处理完成后按窗口条件维护会话记忆
     class MemoryMaintenanceSubscriber final : public EventSubscriber {
     public:
         /// @brief 维护一条已完成消息所属会话记忆的异步副作用

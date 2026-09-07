@@ -66,7 +66,7 @@ namespace insoulforge {
 
         /// @brief 注册或重载一个进程内工具插件
         /// @details 注册失败时保留该插件此前的工具；其他插件不受影响。
-        bool registerPlugin(std::string pluginId, PluginRegistrar registrar);
+        bool registerPlugin(std::string pluginId, const PluginRegistrar &registrar);
 
         /// @brief 卸载一个插件及其注册的全部工具
         void unregisterPlugin(const std::string &pluginId);

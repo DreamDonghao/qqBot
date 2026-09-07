@@ -467,8 +467,7 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
                     }
                 }
 
-                const std::string result =
-                  co_await ToolRegistry::instance().executeTool(name, std::move(args), std::move(ctx));
+                const std::string result = co_await ToolRegistry::instance().executeTool(name, args, std::move(ctx));
                 Logger::session(sessionId).debug("[Executor] 工具结果: {}", result);
                 if (isCqCodeTool(name)) {
                     accumulatedCQCodes += result;
@@ -517,12 +516,13 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
 
                 // 有工具调用：回传 assistant 消息后逐个处理，未命中回复工具则继续下一轮
                 messages.push_back(buildAssistantToolCallMessage(message));
-                std::optional<ReplyDecision> roundDecision;
-                std::tie(roundDecision, messages, accumulatedCQCodes) =
+                auto [roundDecision, nextMessages, nextAccumulatedCQCodes] =
                   co_await processToolCalls(message, std::move(messages), std::move(accumulatedCQCodes), sessionId);
                 if (roundDecision) {
                     co_return std::move(roundDecision);
                 }
+                messages = std::move(nextMessages);
+                accumulatedCQCodes = std::move(nextAccumulatedCQCodes);
             }
 
             Logger::session(sessionId).error("[Executor] 达到最大迭代次数");

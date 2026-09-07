@@ -18,6 +18,7 @@
 #include <message/middleware/AgentAvailabilityMiddleware.hpp>
 #include <message/middleware/EventNormalizationMiddleware.hpp>
 #include <message/runtime/MessageRuntime.hpp>
+#include <message/workflow/AgentResponseWorkflow.hpp>
 #include <model/OneBotMessage.hpp>
 #include <stdexcept>
 #include <storage/ConfigStore.hpp>
@@ -49,9 +50,9 @@ namespace {
             return m_agentRunning;
         }
 
-        drogon::Task<std::optional<std::string>> processAgent(insoulforge::ChatRecordManager &,
+        drogon::Task<insoulforge::AgentProcessResult> processAgent(insoulforge::ChatRecordManager &,
           insoulforge::MemoryManager &, const insoulforge::OneBotMessage &) const override {
-            co_return std::nullopt;
+            co_return {};
         }
 
         drogon::Task<> sendReply(
@@ -66,6 +67,37 @@ namespace {
     private:
         bool m_agentRunning;
         mutable size_t m_availabilityChecks{0};
+    };
+
+    /// @brief 用于验证 Agent 决策与回复投递分支的消息运行时
+    class WorkflowMessageRuntime final : public insoulforge::MessageRuntime {
+    public:
+        explicit WorkflowMessageRuntime(insoulforge::AgentProcessResult result, const bool failToSend = false) :
+            m_result(std::move(result)), m_failToSend(failToSend) {}
+
+        [[nodiscard]] bool isAgentRunning() const override { return true; }
+
+        drogon::Task<insoulforge::AgentProcessResult> processAgent(insoulforge::ChatRecordManager &,
+          insoulforge::MemoryManager &, const insoulforge::OneBotMessage &) const override {
+            co_return m_result;
+        }
+
+        drogon::Task<> sendReply(const insoulforge::OneBotMessage &, const insoulforge::ChatRecordManager &,
+          std::string content) const override {
+            if (m_failToSend) {
+                throw std::runtime_error("expected send failure");
+            }
+            sentReplies.push_back(std::move(content));
+            co_return;
+        }
+
+        drogon::Task<> publish(insoulforge::DomainEvent) const override { co_return; }
+
+        mutable std::vector<std::string> sentReplies;
+
+    private:
+        insoulforge::AgentProcessResult m_result;
+        bool m_failToSend;
     };
 
     class RecordingMiddleware final : public insoulforge::MessageMiddleware {
@@ -155,6 +187,39 @@ namespace {
         drogon::sync_wait(pipeline.process(insoulforge::json::object()));
         check(runtime->availabilityChecks() == 1, "runtime availability check count", kTestName);
         check(trace.empty(), "later middleware was short circuited", kTestName);
+    }
+
+    [[nodiscard]] insoulforge::OneBotMessage createWorkflowMessage() {
+        return insoulforge::OneBotMessage({{"post_type", "message"}, {"message_type", "group"}, {"self_id", 42},
+          {"group_id", 100}, {"message_id", 7}, {"sender", {{"user_id", 11}, {"nickname", "Alice"}}},
+          {"message", {{{"type", "text"}, {"data", {{"text", "hello"}}}}}}});
+    }
+
+    void testAgentResponseWorkflowRoutesOutcomes() {
+        constexpr std::string_view kTestName = "agent response workflow routes outcomes";
+        auto replyRuntime = std::make_shared<WorkflowMessageRuntime>(
+          insoulforge::AgentProcessResult{.outcome = insoulforge::AgentProcessResult::Outcome::Reply, .content = "hi"});
+        const auto replyOutcome =
+          drogon::sync_wait(insoulforge::AgentResponseWorkflow::execute(replyRuntime, createWorkflowMessage(), {}));
+        check(
+          replyOutcome == insoulforge::MessageProcessingOutcome::ReplySent, "reply branch sends message", kTestName);
+        check(replyRuntime->sentReplies == std::vector<std::string>({"hi"}), "reply content is delivered", kTestName);
+
+        auto skipRuntime = std::make_shared<WorkflowMessageRuntime>(
+          insoulforge::AgentProcessResult{.outcome = insoulforge::AgentProcessResult::Outcome::Cancelled});
+        const auto skipOutcome =
+          drogon::sync_wait(insoulforge::AgentResponseWorkflow::execute(skipRuntime, createWorkflowMessage(), {}));
+        check(skipOutcome == insoulforge::MessageProcessingOutcome::AgentCancelled, "cancelled branch skips delivery",
+          kTestName);
+        check(skipRuntime->sentReplies.empty(), "cancelled branch has no reply", kTestName);
+
+        auto failedRuntime = std::make_shared<WorkflowMessageRuntime>(
+          insoulforge::AgentProcessResult{.outcome = insoulforge::AgentProcessResult::Outcome::Reply, .content = "hi"},
+          true);
+        const auto failedOutcome =
+          drogon::sync_wait(insoulforge::AgentResponseWorkflow::execute(failedRuntime, createWorkflowMessage(), {}));
+        check(failedOutcome == insoulforge::MessageProcessingOutcome::ReplyFailed, "send failure has distinct outcome",
+          kTestName);
     }
 
     void testRichMessageContentUsesCanonicalSegments() {
@@ -396,10 +461,20 @@ namespace {
           .sessionId = 42,
           .messageId = 7,
           .contentSize = 12,
+          .outcome = insoulforge::MessageProcessingOutcome::ReplySent,
         }));
 
         check(trace == std::vector<std::string>({"push:42:display", "statistics:12", "memory:42"}),
           "injected side effect trace", kTestName);
+
+        drogon::sync_wait(eventBus.publish(insoulforge::MessageProcessingCompletedEvent{
+          .sessionId = 42,
+          .messageId = 8,
+          .contentSize = 8,
+          .outcome = insoulforge::MessageProcessingOutcome::CommandHandled,
+        }));
+        check(trace == std::vector<std::string>({"push:42:display", "statistics:12", "memory:42"}),
+          "commands do not trigger conversation side effects", kTestName);
     }
 } // namespace
 
@@ -408,6 +483,7 @@ int main() {
     testMiddlewareStopShortCircuits();
     testMiddlewareExceptionStopsChain();
     testPipelineUsesInjectedRuntime();
+    testAgentResponseWorkflowRoutesOutcomes();
     testRichMessageContentUsesCanonicalSegments();
     testMembershipNoticeNormalizesToRichNotification();
     testPokeNoticeNormalizesToRichNotification();

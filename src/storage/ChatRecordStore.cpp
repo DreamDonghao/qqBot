@@ -71,7 +71,7 @@ namespace insoulforge {
             const Statement stmt(db.handle(), "SELECT content FROM chat_records WHERE group_id = ? ORDER BY id DESC");
             stmt.bind(1, sessionId);
             while (stmt.step()) {
-                const std::string content = stmt.getText(0);
+                std::string content = stmt.getText(0);
                 json parsed;
                 if (tryParseJson(content, parsed) && parseUInt64(getStr(parsed, "message_id")) == messageId) {
                     return content;

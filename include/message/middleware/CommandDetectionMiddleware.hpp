@@ -12,7 +12,7 @@ namespace insoulforge {
         /// @copydoc MessageMiddleware::id
         [[nodiscard]] std::string_view id() const noexcept override;
 
-        /// @brief 标记命令消息，实际执行交由 CommandExecutionMiddleware
+        /// @brief 标记命令消息，实际执行交由 MessageRouteMiddleware 的命令分支
         /// @param context 已创建 OneBotMessage 的消息上下文
         /// @return 始终返回 Continue
         drogon::Task<MessageFlow> handle(MessageContext &context) const override;

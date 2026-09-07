@@ -53,7 +53,7 @@ namespace insoulforge {
             }
 
             const size_t keep = std::min(fileEntries.size(), kMaxEntries - loaded.size());
-            const auto first = fileEntries.size() - keep;
+            const auto first = static_cast<std::ptrdiff_t>(fileEntries.size() - keep);
             loaded.insert(loaded.begin(), std::make_move_iterator(fileEntries.begin() + first),
               std::make_move_iterator(fileEntries.end()));
         }

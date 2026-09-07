@@ -4,7 +4,7 @@
  * @brief LLM 配置管理组件
  */
 import {inject, reactive, ref, type Ref, watch} from 'vue'
-import type {ApiResponse, LLMConfig} from '../vite-env.d'
+import type {ApiResponse, LLMConfig} from '../vite-env'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 

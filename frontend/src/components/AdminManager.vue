@@ -4,7 +4,7 @@
  * @brief 管理员管理组件
  */
 import {inject, onMounted, ref, type Ref} from 'vue'
-import type {Admin, ApiResponse} from '../vite-env.d'
+import type {Admin, ApiResponse} from '../vite-env'
 
 const showToast = inject<(msg: string, isError?: boolean) => void>('showToast')
 
