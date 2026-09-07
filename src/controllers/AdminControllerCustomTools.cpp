@@ -56,7 +56,7 @@ Task<> AdminController::saveLLMConfig(
         .api = &config.executorThinking,
         .params = &config.executorThinkingParams,
         .defaultMaxTokens = 512},
-      ConfigTarget{.name = "image", .api = &config.image, .params = nullptr, .defaultMaxTokens = 0},
+      ConfigTarget{.name = "image", .api = &config.image, .params = &config.imageParams, .defaultMaxTokens = 1024},
     };
 
     if (const auto it = std::ranges::find(targets, name, &ConfigTarget::name); it != targets.end()) {

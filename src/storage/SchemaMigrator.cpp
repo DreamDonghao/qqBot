@@ -178,6 +178,21 @@ namespace insoulforge {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ))",
           "CREATE INDEX IF NOT EXISTS idx_long_term_memory_group ON long_term_memory(group_id)"};
+
+        /// @brief v7 新增表：按媒体字节哈希缓存视觉描述，避免相同图片重复调用视觉模型
+        constexpr std::array v7Tables = {
+          R"(CREATE TABLE IF NOT EXISTS image_description_cache (
+        content_hash TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_version INTEGER NOT NULL,
+        media_type TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('succeeded', 'failed')),
+        description TEXT NOT NULL DEFAULT '',
+        sampled_frame_count INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (content_hash, model, prompt_version)
+    ))"};
         int getUserVersion(sqlite3 *db) {
             const Statement stmt(db, "PRAGMA user_version");
             return stmt.step() ? stmt.getInt(0) : 0;
@@ -197,6 +212,7 @@ namespace insoulforge {
             execAll(db, v2Tables);
             execAll(db, v3Tables);
             execAll(db, v6Tables);
+            execAll(db, v7Tables);
             execAll(db, indexes);
             setUserVersion(db, SchemaMigrator::kLatestVersion);
         }
@@ -378,6 +394,13 @@ namespace insoulforge {
             // RAGFlow 已移除，settings 中的知识库配置一并清理
             execSQL(db, "DELETE FROM settings WHERE key = 'kb_config'");
         }
+
+        void migrateV6ToV7(sqlite3 *db) {
+            spdlog::info("执行迁移: 新增图片描述缓存表");
+            execAll(db, v7Tables);
+            ensureColumn(
+              db, "image_description_cache", "sampled_frame_count", "sampled_frame_count INTEGER NOT NULL DEFAULT 1");
+        }
     } // namespace
 
     namespace SchemaMigrator {
@@ -403,6 +426,7 @@ namespace insoulforge {
               &migrateV3ToV4, // scheduled_tasks 状态扩展（新增 cancelled）
               &migrateV4ToV5, // scheduled_tasks 新增 is_daily（每日重复任务）
               &migrateV5ToV6, // 新增 long_term_memory 长期记忆表
+              &migrateV6ToV7, // 新增图片描述缓存表
             };
 
             for (int v = version; v < kLatestVersion; ++v) {

@@ -29,6 +29,7 @@ namespace insoulforge {
         LLMApiConfig executorThinking; // Executor 思考模型配置
         LLMModelParams executorThinkingParams;
         LLMApiConfig image;
+        LLMModelParams imageParams;
         LLMApiConfig embedding; // Embedding 模型配置（长期记忆向量化）
 
         // 记忆配置

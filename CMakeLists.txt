@@ -18,6 +18,11 @@ if (NOT TARGET SQLite3 AND NOT TARGET SQLite3::SQLite3 AND NOT TARGET SQLite3_li
 endif ()
 find_package(spdlog REQUIRED)
 find_package(fmt CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(PNG REQUIRED)
+
+find_path(GIFLIB_INCLUDE_DIR NAMES gif_lib.h REQUIRED)
+find_library(GIFLIB_LIBRARY NAMES gif REQUIRED)
 
 find_package(nlohmann_json CONFIG QUIET)
 
@@ -53,13 +58,20 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         spdlog::spdlog_header_only
         fmt::fmt-header-only
         SQLite3_lib
+        OpenSSL::Crypto
+        PNG::PNG
+        ${GIFLIB_LIBRARY}
 )
 target_link_libraries(${PROJECT_NAME}_backend PRIVATE
         Drogon::Drogon
         spdlog::spdlog_header_only
         fmt::fmt-header-only
         SQLite3_lib
+        OpenSSL::Crypto
+        PNG::PNG
+        ${GIFLIB_LIBRARY}
 )
+target_include_directories(${PROJECT_NAME}_backend PRIVATE ${GIFLIB_INCLUDE_DIR})
 
 # 静态链接 C++ 标准库和 GCC 运行时
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT APPLE)

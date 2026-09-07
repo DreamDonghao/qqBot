@@ -20,6 +20,10 @@
 #include <message/runtime/MessageRuntime.hpp>
 #include <model/OneBotMessage.hpp>
 #include <stdexcept>
+#include <storage/ConfigStore.hpp>
+#include <storage/Database.hpp>
+#include <storage/ImageDescriptionStore.hpp>
+#include <storage/SchemaMigrator.hpp>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -279,6 +283,51 @@ namespace {
           !record.dump().contains("https://example.com/sticker.jpg"), "sticker record excludes CQ source", kTestName);
     }
 
+    void testImageDescriptionCacheSchemaMigration() {
+        constexpr std::string_view kTestName = "image description cache schema migration";
+        sqlite3 *db = nullptr;
+        check(sqlite3_open(":memory:", &db) == SQLITE_OK, "opens in-memory database", kTestName);
+        if (!db)
+            return;
+
+        sqlite3_exec(db, "PRAGMA user_version = 6", nullptr, nullptr, nullptr);
+        insoulforge::SchemaMigrator::migrate(db);
+        sqlite3_stmt *stmt = nullptr;
+        const int prepareResult =
+          sqlite3_prepare_v2(db, "SELECT sampled_frame_count FROM image_description_cache LIMIT 1", -1, &stmt, nullptr);
+        check(prepareResult == SQLITE_OK, "v6 migration creates sampled frame count column", kTestName);
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+    }
+
+    void testImageDescriptionCacheStore() {
+        constexpr std::string_view kTestName = "image description cache store";
+        auto &database = insoulforge::Database::instance();
+        database.initialize(":memory:");
+
+        insoulforge::ImageDescriptionStore::upsert("hash", "vision-model", 1, "gif", true, "角色挥手", 16);
+        const auto succeeded = insoulforge::ImageDescriptionStore::find("hash", "vision-model", 1);
+        check(succeeded && succeeded->succeeded, "stores successful description", kTestName);
+        check(succeeded && succeeded->description == "角色挥手", "stores description", kTestName);
+        check(succeeded && succeeded->sampledFrameCount == 16, "stores sampled frame count", kTestName);
+
+        insoulforge::ImageDescriptionStore::upsert("hash", "vision-model", 1, "gif", false, "", 0);
+        const auto failed = insoulforge::ImageDescriptionStore::find("hash", "vision-model", 1);
+        check(failed && !failed->succeeded, "updates cached failure", kTestName);
+        check(insoulforge::ImageDescriptionStore::clearAll() == 1, "clears all cached descriptions", kTestName);
+        check(!insoulforge::ImageDescriptionStore::find("hash", "vision-model", 1), "cleared entry is unavailable",
+          kTestName);
+
+        insoulforge::ConfigStore::saveLLMConfig(
+          "image", {{"apiKey", "key"}, {"baseUrl", "https://example.com"}, {"path", "/v1/chat/completions"},
+                     {"model", "vision-model"}, {"maxTokens", 1536}, {"temperature", 0.4}, {"topP", 0.8},
+                     {"reasoningEffort", ""}});
+        insoulforge::Config::instance().loadFromDatabase();
+        check(insoulforge::Config::instance().imageParams.maxTokens == 1536, "loads configured image max tokens",
+          kTestName);
+        database.close();
+    }
+
     void testEventSubscriberExceptionDoesNotStopDispatch() {
         constexpr std::string_view kTestName = "event subscriber exception isolation";
         std::vector<std::string> trace;
@@ -364,6 +413,8 @@ int main() {
     testPokeNoticeNormalizesToRichNotification();
     testMessageRecordProjectionHidesImageSources();
     testAssistantStickerRecordKeepsOnlyName();
+    testImageDescriptionCacheSchemaMigration();
+    testImageDescriptionCacheStore();
     testEventSubscriberExceptionDoesNotStopDispatch();
     testEventSubscribersUseInjectedDependencies();
 

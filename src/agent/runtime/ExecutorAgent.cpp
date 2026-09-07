@@ -108,6 +108,7 @@ at_user、等 → 返回CQ码，嵌入 reply 的 content 参数中发送
 - 工具通过 function calling 自动执行
 - 严禁在回复中写出「调用工具xxx(...)」
 - 直接调用工具，回复内容放参数中
+- reply 必须传入非空 content，例如 reply({"content":"你好"})；不要把最终回复只写在 assistant 的 content 字段
 - 模型只决定调用哪个工具、传什么参数
 
 表情/图片的CQ码必须通过工具获取(send_sticker/send_face/send_image)。
@@ -329,30 +330,71 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
             return content;
         }
 
-        /// @brief 处理回复工具（no_reply / reply / reply_with_quote），把决策写入 decision
-        /// @return 是否为回复工具；参数缺失时不产生决策也不回传工具结果（回复工具不降级为普通工具执行）
-        [[nodiscard]] bool applyReplyTool(
+        enum class ReplyToolResult {
+            NotReplyTool,
+            Applied,
+            InvalidArguments,
+        };
+
+        /// @brief 校验并处理回复工具（no_reply / reply / reply_with_quote）
+        /// @return 已生成决策、参数无效或非回复工具；参数无效由调用方回传错误给模型。
+        [[nodiscard]] ReplyToolResult applyReplyTool(
           const std::string &name, const json &args, const std::string &accumulatedCQCodes, ReplyDecision &decision) {
             if (name == "no_reply") {
                 decision.shouldReply = false;
-                return true;
+                return ReplyToolResult::Applied;
             }
             if (name == "reply") {
-                if (args.contains("content")) {
-                    decision.shouldReply = true;
-                    decision.content = finalizeContent(jsonToString(args["content"]), accumulatedCQCodes);
-                }
-                return true;
+                if (!args.is_object() || !args.contains("content"))
+                    return ReplyToolResult::InvalidArguments;
+                decision.content = finalizeContent(jsonToString(args["content"]), accumulatedCQCodes);
+                if (decision.content.empty())
+                    return ReplyToolResult::InvalidArguments;
+                decision.shouldReply = true;
+                return ReplyToolResult::Applied;
             }
             if (name == "reply_with_quote") {
-                if (args.contains("content") && args.contains("message_id")) {
-                    decision.shouldReply = true;
-                    decision.content = fmt::format("[CQ:reply,id={}]", jsonToString(args["message_id"])) +
-                                       finalizeContent(jsonToString(args["content"]), accumulatedCQCodes);
-                }
-                return true;
+                if (!args.is_object() || !args.contains("content") || !args.contains("message_id"))
+                    return ReplyToolResult::InvalidArguments;
+                const std::string messageId = jsonToString(args["message_id"]);
+                const std::string content = finalizeContent(jsonToString(args["content"]), accumulatedCQCodes);
+                if (messageId.empty() || content.empty())
+                    return ReplyToolResult::InvalidArguments;
+                decision.shouldReply = true;
+                decision.content = fmt::format("[CQ:reply,id={}]", messageId) + content;
+                return ReplyToolResult::Applied;
             }
-            return false; // 非回复工具，交由 ToolRegistry 执行
+            return ReplyToolResult::NotReplyTool;
+        }
+
+        /// @brief 向模型回传单个工具调用的执行结果或参数错误
+        void appendToolResult(json &messages, const json &toolCall, std::string content) {
+            json toolMsg;
+            toolMsg["role"] = "tool";
+            toolMsg["tool_call_id"] = jsonToString(atOrNull(toolCall, "id"));
+            toolMsg["content"] = std::move(content);
+            messages.push_back(std::move(toolMsg));
+        }
+
+        /// @brief 解析兼容接口返回的工具参数
+        /// @details OpenAI 兼容格式使用 JSON 字符串，部分接口直接返回 JSON 对象；两种格式均归一化为对象。
+        [[nodiscard]] json parseToolArguments(const json &toolCall) {
+            const json &rawArguments = atOrNull(atOrNull(toolCall, "function"), "arguments");
+            if (rawArguments.is_object())
+                return rawArguments;
+            json args;
+            if (rawArguments.is_string()) {
+                std::ignore = tryParseJson(jsonToString(rawArguments), args);
+            }
+            return args.is_object() ? args : json::object();
+        }
+
+        /// @brief 将工具参数序列化为 OpenAI tool 消息要求的 JSON 字符串
+        [[nodiscard]] std::string serializeToolArguments(const json &toolCall) {
+            const json &rawArguments = atOrNull(atOrNull(toolCall, "function"), "arguments");
+            if (rawArguments.is_string())
+                return jsonToString(rawArguments);
+            return rawArguments.is_object() ? dumpJson(rawArguments) : "{}";
         }
 
         /// @brief 把模型返回的 tool_calls 转为需回传以补全上下文的 assistant 消息
@@ -367,7 +409,7 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
                 entry["id"] = jsonToString(atOrNull(toolCall, "id"));
                 entry["type"] = "function";
                 entry["function"]["name"] = jsonToString(atOrNull(atOrNull(toolCall, "function"), "name"));
-                entry["function"]["arguments"] = jsonToString(atOrNull(atOrNull(toolCall, "function"), "arguments"));
+                entry["function"]["arguments"] = serializeToolArguments(toolCall);
                 toolCalls.push_back(entry);
             }
             assistantMsg["tool_calls"] = toolCalls;
@@ -386,11 +428,31 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
                 const std::string name = jsonToString(atOrNull(atOrNull(toolCall, "function"), "name"));
                 Logger::session(sessionId).info("[Executor] 工具: {}", name);
 
-                json args;
-                std::ignore = tryParseJson(jsonToString(atOrNull(atOrNull(toolCall, "function"), "arguments")), args);
+                const json args = parseToolArguments(toolCall);
 
-                if (applyReplyTool(name, args, accumulatedCQCodes, decision)) {
+                const ReplyToolResult replyResult = applyReplyTool(name, args, accumulatedCQCodes, decision);
+                if (replyResult == ReplyToolResult::Applied) {
                     hasDecision = true; // 回复工具：结束本轮，不回传工具结果
+                    continue;
+                }
+                if (replyResult == ReplyToolResult::InvalidArguments) {
+                    // 部分兼容接口会把最终文本放在 assistant content，却返回 reply({})。
+                    if (name == "reply") {
+                        const std::string fallback =
+                          finalizeContent(jsonToString(atOrNull(message, "content")), accumulatedCQCodes);
+                        if (!fallback.empty()) {
+                            Logger::session(sessionId).warn("[Executor] reply 参数为空，使用 assistant content 兜底");
+                            decision.shouldReply = true;
+                            decision.content = fallback;
+                            hasDecision = true;
+                            continue;
+                        }
+                    }
+                    const std::string error = name == "reply_with_quote"
+                                                ? "reply_with_quote 需要非空 content 和 message_id，请重新调用。"
+                                                : "reply 需要非空 content，请重新调用。";
+                    Logger::session(sessionId).warn("[Executor] 回复工具参数无效: {}", name);
+                    appendToolResult(messages, toolCall, error);
                     continue;
                 }
 
@@ -412,11 +474,7 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
                     accumulatedCQCodes += result;
                 }
 
-                json toolMsg;
-                toolMsg["role"] = "tool";
-                toolMsg["tool_call_id"] = jsonToString(atOrNull(toolCall, "id"));
-                toolMsg["content"] = result;
-                messages.push_back(toolMsg);
+                appendToolResult(messages, toolCall, result);
             }
 
             if (hasDecision) {

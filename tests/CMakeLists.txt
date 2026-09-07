@@ -11,7 +11,10 @@ target_link_libraries(insoulforge_contract_tests PRIVATE
         Drogon::Drogon
         spdlog::spdlog_header_only
         fmt::fmt-header-only
-        SQLite3_lib)
+        SQLite3_lib
+        OpenSSL::Crypto
+        PNG::PNG
+        ${GIFLIB_LIBRARY})
 
 if (nlohmann_json_FOUND)
     target_link_libraries(insoulforge_contract_tests PRIVATE nlohmann_json::nlohmann_json)

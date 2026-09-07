@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <storage/AdminStore.hpp>
+#include <storage/ImageDescriptionStore.hpp>
 #include <storage/SessionStore.hpp>
 #include <util/CommonUtil.hpp>
 #include <vector>
@@ -73,6 +74,7 @@ namespace insoulforge {
                        "/admins - 查看管理员列表\n"
                        "/addadmin <QQ号> - 添加管理员\n"
                        "/deladmin <QQ号> - 移除管理员\n"
+                       "/clearimagecache - 清除全部图片识别缓存\n"
                        "【表情管理】\n"
                        "/delemoji <名称> - 删除表情包\n"
                        "/listemoji - 查看表情包列表\n"
@@ -158,6 +160,8 @@ namespace insoulforge {
             } else {
                 response = "无效的QQ号格式";
             }
+        } else if (cmd == "/clearimagecache" || cmd == "/清除图片缓存") {
+            response = fmt::format("已清除 {} 条图片识别缓存", ImageDescriptionStore::clearAll());
         } else if (cmd == "/delemoji" || cmd == "/删除表情") {
             std::string name;
             if (!(iss >> name)) {

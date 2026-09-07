@@ -4,54 +4,10 @@
 #include <algorithm>
 #include <config/Config.hpp>
 #include <model/OneBotMessage.hpp>
-#include <service/LlmClient.hpp>
-#include <util/HttpUtil.hpp>
-#include <util/Logger.hpp>
+#include <service/ImageDescriptionService.hpp>
 #include <utility>
 
 namespace insoulforge {
-    namespace {
-        /// @brief 调用视觉模型描述一张图片
-        /// @return 成功时返回描述；请求或响应无效时返回空值
-        drogon::Task<std::optional<std::string>> describeImage(std::string imageUrl, const uint64_t sessionId) {
-            const auto &config = Config::instance();
-            // 图像描述请求不发送 reasoning_effort（图像模型不支持，保持既有行为）
-            LLMApiConfig api = config.image;
-            api.reasoningEffort.clear();
-            constexpr LLMModelParams params{.maxTokens = 300, .temperature = 0.7, .topP = 0.92};
-            const json body = LlmClient::buildChatRequestBody(api, params,
-              parseJson(fmt::format(
-                R"([{{"role":"user","content":[
-                    {{"type":"image_url","image_url":{{"url":"{}"}}}},
-                    {{"type":"text","text":"用不到150字描述这张图片"}}
-            ]}}])",
-                imageUrl)));
-
-            const auto resp = co_await HttpUtil::send("[Image]", config.image.baseUrl, config.image.path, drogon::Post,
-              body, config.image.apiKey, 90.0, sessionId);
-            if (!resp) {
-                co_return std::nullopt;
-            }
-
-            const auto respJson = LlmClient::validChatJson(*resp);
-            if (!respJson) {
-                if ((*resp)->getStatusCode() != drogon::k200OK) {
-                    Logger::session(sessionId).error(
-                      "[Image] 图像描述请求失败: status={}", static_cast<int>((*resp)->getStatusCode()));
-                    co_return std::nullopt;
-                }
-                Logger::session(sessionId).error("[Image] 图像描述响应格式错误");
-                co_return std::nullopt;
-            }
-
-            LlmClient::logUsage(*respJson, config.image.model, "image", sessionId);
-
-            const json &message = atOrNull((*respJson)["choices"][0], "message");
-            const std::string description = jsonToString(atOrNull(message, "content"));
-            co_return description.empty() ? std::nullopt : std::optional{description};
-        }
-    } // namespace
-
     OneBotMessage::OneBotMessage(json event) : m_event(std::move(event)) {
         const uint64_t qqNumber = getSenderQQNumber();
         const uint64_t selfQQ = getSelfQQNumber();
@@ -172,9 +128,13 @@ namespace insoulforge {
                 const size_t imageIndex = images.size();
                 json image;
                 image["source"] = {{"file", getStr(data, "file")}, {"url", getStr(data, "url")}};
-                if (const auto description = co_await describeImage(getStr(data, "url"), getSessionId())) {
+                if (const auto description =
+                      co_await ImageDescriptionService::describe(getStr(data, "url"), getSessionId())) {
                     image["recognition_status"] = "succeeded";
-                    image["description"] = *description;
+                    image["description"] = description->description;
+                    image["content_hash"] = description->contentHash;
+                    image["media"] = {
+                      {"type", description->mediaType}, {"sampled_frame_count", description->sampledFrameCount}};
                 } else {
                     image["recognition_status"] = "failed";
                 }

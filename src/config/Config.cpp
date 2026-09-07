@@ -45,7 +45,7 @@ namespace insoulforge {
         loadLLMConfig("router", router, &routerParams);
         loadLLMConfig("executor", executor, &executorParams);
         loadLLMConfig("executorThinking", executorThinking, &executorThinkingParams);
-        loadLLMConfig("image", image);
+        loadLLMConfig("image", image, &imageParams);
         loadLLMConfig("embedding", embedding);
 
         // 加载记忆配置
