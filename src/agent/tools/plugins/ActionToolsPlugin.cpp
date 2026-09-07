@@ -10,6 +10,7 @@
 #include <event/DomainEvent.hpp>
 #include <event/EventBus.hpp>
 #include <fmt/core.h>
+#include <message/MessageRecord.hpp>
 #include <model/OneBotMessage.hpp>
 #include <optional>
 #include <service/ChatRecordManager.hpp>
@@ -19,6 +20,7 @@
 #include <service/ToolRegistry.hpp>
 #include <set>
 #include <spdlog/spdlog.h>
+#include <storage/ChatRecordStore.hpp>
 #include <storage/TaskStore.hpp>
 #include <util/CommonUtil.hpp>
 
@@ -185,40 +187,61 @@ namespace insoulforge {
         const json saveParams = json::parse(R"json({
                 "type": "object",
                 "properties": {
-                    "file": {
+                    "message_id": {
                         "type": "string",
-                        "description": "图片在QQ缓存中的文件名（来自聊天记录JSON的images[].file字段）"
+                        "description": "含目标图片的聊天记录消息ID"
                     },
-                    "url": {
-                        "type": "string",
-                        "description": "图片URL（来自聊天记录JSON的images[].url字段），file方式获取失败时用于下载，最好同时提供"
+                    "image_index": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "图片在该消息中的从0开始索引"
                     },
                     "name": {
                         "type": "string",
                         "description": "给表情起的简短名字（根据图片内容），如: 摸头、猫猫惊讶"
                     }
                 },
-                "required": ["file", "name"]
+                "required": ["message_id", "image_index", "name"]
             })json");
         registry.registerTool(
           {
             .name = "save_sticker",
-            .description = "把用户发的表情/"
-                           "图片保存为自己的QQ收藏表情并设置描述名称。仅在用户明确要求保存表情时使用。聊天记录中图"
-                           "片消息会带images数组，同时传images[].file和images[]."
-                           "url作为参数。name必须起一个能体现图片内容的名字，方便以后用send_sticker引用。",
+            .description = "把用户消息中的图片保存为自己的QQ收藏表情并设置描述名称。仅在用户明确要求保存表情时使用。"
+                           "传入聊天记录的message_id和图片在该消息中的image_index；不要猜测或传入图片URL。"
+                           "name必须起一个能体现图片内容的名字，方便以后用send_sticker引用。",
             .parameters = saveParams,
             .handler = [](json args, ToolCallContext ctx) -> drogon::Task<std::string> {
                 const auto sessionId = ctx.sessionId;
-                const std::string file = argString(args, "file");
-                const std::string url = argString(args, "url");
+                const uint64_t messageId = parseUInt64(argString(args, "message_id"));
+                const int imageIndex = getInt(args, "image_index", -1);
                 const std::string name = argString(args, "name");
-                if (file.empty())
-                    co_return std::string("请提供图片文件名(file)");
+                if (messageId == 0)
+                    co_return std::string("请提供有效的图片消息ID(message_id)");
+                if (imageIndex < 0)
+                    co_return std::string("请提供从0开始的图片索引(image_index)");
                 if (name.empty())
                     co_return std::string("请提供表情名称(name)");
 
-                spdlog::info("[Sticker] save_sticker 参数: file={} url={}", file, url.substr(0, 150));
+                const auto content = ChatRecordStore::findContentByMessageId(sessionId, messageId);
+                if (!content) {
+                    co_return std::string("未找到该会话中的图片消息，无法保存表情");
+                }
+                json record;
+                if (!tryParseJson(*content, record)) {
+                    co_return std::string("图片消息记录损坏，无法保存表情");
+                }
+                if (getStr(atOrNull(record, "sender"), "qq") == "self") {
+                    co_return std::string("不能将机器人主动发送的图片保存为收藏表情");
+                }
+                const auto source = MessageRecord::findImageSource(record, static_cast<size_t>(imageIndex));
+                if (!source) {
+                    co_return std::string("该消息不存在指定图片，或图片来源已不可用");
+                }
+                const std::string &file = source->file;
+                const std::string &url = source->url;
+
+                spdlog::info(
+                  "[Sticker] save_sticker: message_id={} image_index={} file={}", messageId, imageIndex, file);
 
                 // Step 1: 尝试 get_image 拿容器内路径（商城表情会失败/超时）
                 std::string containerPath;
@@ -476,21 +499,18 @@ namespace insoulforge {
                     co_return std::string("拍一拍失败: 权限不足或用户不存在");
                 }
 
-                // 拍一拍不是文字消息（无 message_id），以通知段记录，避免污染 text 字段。
+                // 拍一拍不是文字消息（无 message_id），以单一语义段记录。
                 const std::string targetName = OneBotMessage::getQQName(userId);
-                json notification;
-                notification["type"] = "poke";
-                notification["actor_id"] = Config::instance().selfQQNumber;
-                notification["actor_name"] = Config::instance().botName + "(我)";
-                notification["target_id"] = userId;
-                notification["target_name"] = targetName;
-                notification["direction"] = "outbound";
+                json target{{"qq", std::to_string(userId)}};
+                if (targetName != "未知") {
+                    target["name"] = targetName;
+                }
+                const json poke{{"type", "poke"}, {"target", std::move(target)}, {"direction", "outbound"}};
                 json msgJson;
                 msgJson["time"] = currentDateTime();
                 msgJson["sender"]["name"] = Config::instance().botName + "(我)";
                 msgJson["sender"]["qq"] = "self";
-                msgJson["segments"] = json::array({notification});
-                msgJson["notifications"] = json::array({std::move(notification)});
+                msgJson["segments"] = json::array({poke});
                 const ChatRecordManager chatRecords(sessionId);
                 const std::string recordContent = dumpJson(msgJson);
                 chatRecords.addAssistantRecord(recordContent);

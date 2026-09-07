@@ -6,6 +6,7 @@
 
 #pragma once
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,13 @@ namespace insoulforge {
         [[nodiscard]] std::vector<json> getChatRecords(uint64_t sessionId, int limit = 50);
 
         [[nodiscard]] std::vector<json> getChatRecordsWithIds(uint64_t sessionId, int limit = 50);
+
+        /// @brief 按 OneBot 消息 ID 查找指定会话中的聊天记录内容
+        /// @param sessionId 统一会话 ID
+        /// @param messageId OneBot 消息 ID
+        /// @return 匹配记录的 content JSON 字符串；找不到时返回空值
+        /// @details 逐条解析内容以兼容未使用 SQLite JSON 扩展的部署环境。
+        [[nodiscard]] std::optional<std::string> findContentByMessageId(uint64_t sessionId, uint64_t messageId);
 
         /// @brief 获取水位线之后的最新记录（旧→新），limit<=0 表示不限
         [[nodiscard]] std::vector<json> getChatRecordsSince(uint64_t sessionId, uint64_t watermarkId, int limit = 0);

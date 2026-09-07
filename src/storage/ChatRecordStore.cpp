@@ -65,6 +65,21 @@ namespace insoulforge {
             return records;
         }
 
+        std::optional<std::string> findContentByMessageId(const uint64_t sessionId, const uint64_t messageId) {
+            const auto &db = Database::instance();
+            std::shared_lock lock(db.mutex());
+            const Statement stmt(db.handle(), "SELECT content FROM chat_records WHERE group_id = ? ORDER BY id DESC");
+            stmt.bind(1, sessionId);
+            while (stmt.step()) {
+                const std::string content = stmt.getText(0);
+                json parsed;
+                if (tryParseJson(content, parsed) && parseUInt64(getStr(parsed, "message_id")) == messageId) {
+                    return content;
+                }
+            }
+            return std::nullopt;
+        }
+
         std::vector<json> getChatRecordsSince(const uint64_t sessionId, const uint64_t watermarkId, const int limit) {
             const auto &db = Database::instance();
             std::shared_lock lock(db.mutex());

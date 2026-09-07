@@ -5,6 +5,7 @@
 #include <config/Config.hpp>
 #include <event/DomainEvent.hpp>
 #include <event/EventBus.hpp>
+#include <message/MessageRecord.hpp>
 #include <model/OneBotMessage.hpp>
 #include <regex>
 #include <service/MessageService.hpp>
@@ -72,21 +73,8 @@ namespace insoulforge {
                 co_return std::nullopt;
             }
 
-            const auto &config = Config::instance();
-
-            // 获取当前时间
-            const std::string timeStr = currentDateTime();
-
-            // 构造JSON格式的消息
-            json msgJson;
-            msgJson["time"] = timeStr;
-            msgJson["sender"]["name"] = config.botName + "(我)";
-            msgJson["sender"]["qq"] = "self";
-            msgJson["message_id"] = std::to_string(*messageId);
-            msgJson["text"] = processedMessage;
-            msgJson["reply_to"] = nullptr;
-
-            const std::string formattedMsg = dumpJson(msgJson);
+            const std::string formattedMsg = dumpJson(
+              MessageRecord::createAssistantRecord(Config::instance().botName + "(我)", *messageId, processedMessage));
 
             // 更新聊天记录（保存JSON格式）
             chatRecords.addAssistantRecord(formattedMsg);
@@ -117,8 +105,8 @@ namespace insoulforge {
       const uint64_t userId, std::string message, const ChatRecordManager &chatRecords) {
         const std::string processedMessage = convertAtToCQCode(std::move(message));
         co_return co_await afterSendMessage(
-          OneBotClient::sendPrivateMsg(userId, processedMessage, userId | OneBotMessage::kPrivateSessionFlag), chatRecords,
-          processedMessage, userId | OneBotMessage::kPrivateSessionFlag, "私聊消息");
+          OneBotClient::sendPrivateMsg(userId, processedMessage, userId | OneBotMessage::kPrivateSessionFlag),
+          chatRecords, processedMessage, userId | OneBotMessage::kPrivateSessionFlag, "私聊消息");
     }
 
     drogon::Task<std::string> MessageService::fetchAndUpdateSessionName(const uint64_t sessionId) {

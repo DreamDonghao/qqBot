@@ -14,6 +14,7 @@
 #include <message/MessageContext.hpp>
 #include <message/MessageMiddleware.hpp>
 #include <message/MessagePipeline.hpp>
+#include <message/MessageRecord.hpp>
 #include <message/middleware/AgentAvailabilityMiddleware.hpp>
 #include <message/middleware/EventNormalizationMiddleware.hpp>
 #include <message/runtime/MessageRuntime.hpp>
@@ -152,7 +153,7 @@ namespace {
         check(trace.empty(), "later middleware was short circuited", kTestName);
     }
 
-    void testRichMessageContentKeepsNonTextSegmentsOutOfText() {
+    void testRichMessageContentUsesCanonicalSegments() {
         constexpr std::string_view kTestName = "rich message content segments";
         auto &config = insoulforge::Config::instance();
         const uint64_t originalSelfId = config.selfQQNumber;
@@ -174,8 +175,10 @@ namespace {
         drogon::sync_wait(message.enrichContent());
         const insoulforge::json record = insoulforge::parseJson(message.recordContent());
         check(!record.contains("text"), "non-text segments do not populate text", kTestName);
-        check(record["faces"].size() == 1, "face is stored independently", kTestName);
-        check(record["notifications"].size() == 1, "poke is stored independently", kTestName);
+        check(!record.contains("faces"), "face has no duplicate collection", kTestName);
+        check(!record.contains("notifications"), "poke has no duplicate collection", kTestName);
+        check(record["segments"][0]["type"] == "face", "face is stored in ordered segments", kTestName);
+        check(record["segments"][1]["type"] == "poke", "poke is stored in ordered segments", kTestName);
         check(message.hasFace(), "face marker", kTestName);
         check(message.isPokeForBot(), "bot poke marker", kTestName);
 
@@ -197,7 +200,8 @@ namespace {
         drogon::sync_wait(context.message().enrichContent());
         const insoulforge::json record = insoulforge::parseJson(context.message().recordContent());
         check(!record.contains("text"), "notification does not populate text", kTestName);
-        check(record["notifications"][0]["kind"] == "member_join", "join kind", kTestName);
+        check(record["segments"][0]["type"] == "member_event", "membership is an ordered segment", kTestName);
+        check(record["segments"][0]["action"] == "join", "join action", kTestName);
     }
 
     void testPokeNoticeNormalizesToRichNotification() {
@@ -221,9 +225,58 @@ namespace {
         drogon::sync_wait(context.message().enrichContent());
         const insoulforge::json record = insoulforge::parseJson(context.message().recordContent());
         check(!record.contains("text"), "poke does not populate text", kTestName);
-        check(record["notifications"][0]["type"] == "poke", "poke type", kTestName);
+        check(record["segments"][0]["type"] == "poke", "poke type", kTestName);
 
         config.selfQQNumber = originalSelfId;
+    }
+
+    void testMessageRecordProjectionHidesImageSources() {
+        constexpr std::string_view kTestName = "message record projection";
+        const insoulforge::json record = {
+          {"time", "2026-09-07 17:22:05"},
+          {"sender", {{"name", "Alice"}, {"qq", "11"}}},
+          {"message_id", "7"},
+          {"segments", {{{"type", "text"}, {"text", "看这张图"}}, {{"type", "image"}, {"image_index", 0}}}},
+          {"assets", {{"images", {{{"recognition_status", "succeeded"}, {"description", "一只蓝色的猫"},
+                                   {"source", {{"file", "cat.jpg"}, {"url", "https://example.com/cat.jpg"}}}}}}}},
+        };
+
+        const insoulforge::json projected = insoulforge::MessageRecord::projectForAgent(record);
+        check(!projected.contains("assets"), "agent projection excludes assets", kTestName);
+        check(projected["segments"][1]["image_index"] == 0, "image index remains stable", kTestName);
+        check(
+          projected["segments"][1]["description"] == "一只蓝色的猫", "image description remains visible", kTestName);
+        check(
+          !projected.dump().contains("https://example.com/cat.jpg"), "agent projection excludes image URL", kTestName);
+
+        const auto source = insoulforge::MessageRecord::findImageSource(record, 0);
+        check(source && source->file == "cat.jpg", "tool can resolve image source", kTestName);
+        check(insoulforge::MessageRecord::extractRecallText(record).contains("一只蓝色的猫"),
+          "image description participates in recall", kTestName);
+
+        const insoulforge::json legacyRecord = {
+          {"message_id", "8"},
+          {"segments", {{{"type", "image"}, {"file", "legacy.jpg"}, {"url", "https://example.com/legacy.jpg"},
+                         {"recognition_status", "succeeded"}, {"description", "旧版图片"}}}},
+          {"images", {{{"file", "legacy.jpg"}, {"url", "https://example.com/legacy.jpg"},
+                       {"recognition_status", "succeeded"}, {"description", "旧版图片"}}}},
+        };
+        const insoulforge::json legacyProjection = insoulforge::MessageRecord::projectForAgent(legacyRecord);
+        check(!legacyProjection.dump().contains("https://example.com/legacy.jpg"),
+          "legacy projection excludes image URL", kTestName);
+        const auto legacySource = insoulforge::MessageRecord::findImageSource(legacyRecord, 0);
+        check(legacySource && legacySource->file == "legacy.jpg", "tool resolves legacy image source", kTestName);
+    }
+
+    void testAssistantStickerRecordKeepsOnlyName() {
+        constexpr std::string_view kTestName = "assistant sticker record";
+        const insoulforge::json record = insoulforge::MessageRecord::createAssistantRecord(
+          "Bot(我)", 7, "[CQ:image,file=https://example.com/sticker.jpg,sub_type=1,summary=嘲讽]");
+        check(record["segments"].size() == 1, "sticker has one semantic segment", kTestName);
+        check(record["segments"][0]["type"] == "sticker", "sticker segment type", kTestName);
+        check(record["segments"][0]["name"] == "嘲讽", "sticker summary becomes name", kTestName);
+        check(
+          !record.dump().contains("https://example.com/sticker.jpg"), "sticker record excludes CQ source", kTestName);
     }
 
     void testEventSubscriberExceptionDoesNotStopDispatch() {
@@ -306,9 +359,11 @@ int main() {
     testMiddlewareStopShortCircuits();
     testMiddlewareExceptionStopsChain();
     testPipelineUsesInjectedRuntime();
-    testRichMessageContentKeepsNonTextSegmentsOutOfText();
+    testRichMessageContentUsesCanonicalSegments();
     testMembershipNoticeNormalizesToRichNotification();
     testPokeNoticeNormalizesToRichNotification();
+    testMessageRecordProjectionHidesImageSources();
+    testAssistantStickerRecordKeepsOnlyName();
     testEventSubscriberExceptionDoesNotStopDispatch();
     testEventSubscribersUseInjectedDependencies();
 

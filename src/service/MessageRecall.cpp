@@ -9,6 +9,7 @@
 #include <config/Config.hpp>
 #include <deque>
 #include <drogon/utils/coroutine.h>
+#include <message/MessageRecord.hpp>
 #include <mutex>
 #include <service/ChatRecordManager.hpp>
 #include <service/LlmClient.hpp>
@@ -81,9 +82,7 @@ namespace insoulforge {
         if (messageId == 0)
             co_return;
 
-        std::string text;
-        if (!isAssistant)
-            text = getStr(content, "text");
+        const std::string text = isAssistant ? "" : MessageRecord::extractRecallText(content);
         const bool needRecall = !isAssistant && utf8Length(text) > kMinRecallChars;
 
         {

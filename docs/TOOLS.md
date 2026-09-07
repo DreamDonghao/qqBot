@@ -52,7 +52,7 @@ Executor（`ExecutorAgent`）在单个 Agent 循环中通过工具调用生成�
 | `send_face`      | `id`                   | 生成 QQ 原生表情 CQ 码（返回的 CQ 码需拼进 `reply` 的 content）                                                                                                                                                                                              |
 | `send_image`     | `url`                  | 生成网络图片 CQ 码（同上）                                                                                                                                                                                                                                   |
 | `send_sticker`   | `name`                 | 把收藏表情作为**独立消息**直接发出，无需拼进 reply：商城表情走 `[CQ:mface]`，个人收藏走 `[CQ:image,sub_type=1]`；经 `MessageService` 发送，成功后自动记入聊天记录并推送 WebSocket，后续轮次模型能从记录中看到自己发过这张表情                                |
-| `save_sticker`   | `file`, `name`, `url?` | 把用户发的图片存为收藏表情并设置描述名：先 `get_image` 拿容器内路径（商城表情会失败），失败回退 `download_file` 按 URL 下载；`add_custom_face` 保存后 diff 保存前后的 `res_id` 集合定位新表情，再设置描述名。参数取聊天记录 `images[].file` / `images[].url` |
+| `save_sticker`   | `message_id`, `image_index`, `name` | 把用户发的图片存为收藏表情并设置描述名：工具按消息 ID 和从 0 开始的图片索引在当前会话记录中解析图片来源，先 `get_image` 拿容器内路径，失败回退 `download_file`；`add_custom_face` 保存后 diff 保存前后的 `res_id` 集合定位新表情，再设置描述名。 |
 | `rename_sticker` | `name`, `new_name`     | 修改收藏表情的描述名                                                                                                                                                                                                                                         |
 | `delete_sticker` | `name`                 | 从 QQ 收藏表情中删除                                                                                                                                                                                                                                         |
 
@@ -65,13 +65,13 @@ Executor（`ExecutorAgent`）在单个 Agent 循环中通过工具调用生成�
 |------------------|-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `at_user`        | `qq`              | @某人的 CQ 码（拼进 reply 用），`"all"` 为 @全体成员；私聊中禁用                                                                                                                                                                          |
 | `ban_user`       | `qq`, `duration?` | 禁言群成员，默认 600 秒、0 为解禁；描述要求模型自行判断违规程度选时长（轻度 60-300 秒 / 中度 600-1800 秒 / 重度 3600 秒+），不盲从指令                                                                                                    |
-| `send_poke`      | `qq`              | 拍一拍群成员，打招呼、引起注意等轻松互动；私聊中禁用。拍一拍不是文字消息（无 message_id），成功后以 `notifications` / `segments` 中的 `poke` 条目记入聊天记录并推送 WebSocket，后续轮次模型能看到自己拍过谁 |
+| `send_poke`      | `qq`              | 拍一拍群成员，打招呼、引起注意等轻松互动；私聊中禁用。拍一拍不是文字消息（无 message_id），成功后以 `segments` 中的 `poke` 条目记入聊天记录并推送 WebSocket，后续轮次模型能看到自己拍过谁 |
 | `recall_message` | `message_id`      | 撤回消息：撤引用的消息用 `reply_to` 字段值，撤某条消息本身用 `message_id` 字段值                                                                                                                                                          |
 
 拍一拍的接收：OneBot notice 事件（`notice_type=notify, sub_type=poke`）由 `MessagePipeline` 的事件归一化中间件
-处理。禁用会话会提前跳过；已启用会话中，拍一拍被归一化为独立 `poke` 通知段，戳机器人时由 Router 决策是否回应；其他人拍
-其他人仅写入群聊天记录（`sender`=戳人者），不触发回复；机器人自己拍的已由 `send_poke` 工具记录，忽略。群成员入群、退群也以
-`member_join`、`member_leave` 通知段走同一消息链路。
+处理。禁用会话会提前跳过；已启用会话中，拍一拍被归一化为独立 `poke` 段，戳机器人时由 Router 决策是否回应；其他人拍
+其他人仅写入群聊天记录（`sender`=戳人者），不触发回复；机器人自己拍的已由 `send_poke` 工具记录，忽略。群成员入群、退群以
+`member_event` 段走同一消息链路。
 
 ### 定时任务
 
@@ -84,8 +84,8 @@ Executor（`ExecutorAgent`）在单个 Agent 循环中通过工具调用生成�
 
 - **会话上下文**：所有工具签名统一为 `(json args, ToolCallContext)`，会话 id 从 `ctx.sessionId` 取得；群操作类工具统一做私聊拦截与
   `sessionId == 0` 校验
-- **参数来源**：QQ 号、消息 ID、图片文件等参数取自聊天记录 JSON 的 `sender.qq` / `images[].file` / `images[].url` /
-  `message_id` / `reply_to` 等字段，工具描述中写明了格式示例
+- **参数来源**：QQ 号、消息 ID、图片索引等参数取自聊天记录 JSON 的 `sender.qq` / `message_id` /
+  `segments[].image_index` / `reply_to` 等字段；图片 `file/url` 仅由服务端从 `assets.images` 读取，不会提供给模型
 - **宽容取值**：参数读取统一走 `argString` / `getInt` / `getUInt` / `getBool`（见 `include/util/JsonUtil.hpp`
   ），缺参数返回引导性错误提示而非异常
 - **注册方式**：见 `include/agent/tools/plugins/*ToolsPlugin.hpp`、`include/agent/tools/ToolArgument.hpp`

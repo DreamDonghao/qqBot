@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <config/Config.hpp>
+#include <message/MessageRecord.hpp>
 #include <model/OneBotMessage.hpp>
 #include <mutex>
 #include <ranges>
@@ -328,17 +329,14 @@ namespace insoulforge {
             return text;
         }
 
-        /// @brief 去除记录 content JSON 中的 images 字段（文件名/URL 对提取与评分无用，纯耗 token）
-        /// @details 解析失败或非 JSON 内容原样保留（历史存量可能是纯文本），不做修改
-        void stripRecordImages(std::vector<json> &records) {
+        /// @brief 将记录投影为不含图片来源的语义内容
+        /// @details 同时清除旧记录中的重复图片字段；解析失败或非 JSON 内容原样保留。
+        void projectRecordsForMemory(std::vector<json> &records) {
             for (auto &record: records) {
                 json content;
                 if (!tryParseJson(getStr(record, "content"), content) || !content.is_object())
                     continue;
-                if (!content.contains("images"))
-                    continue;
-                content.erase("images");
-                record["content"] = dumpJson(content);
+                record["content"] = dumpJson(MessageRecord::projectForAgent(content));
             }
         }
 
@@ -423,7 +421,7 @@ namespace insoulforge {
             Logger::session(sessionId).warn("窗口记录数与计数不一致，跳过本轮");
             co_return;
         }
-        stripRecordImages(records);
+        projectRecordsForMemory(records);
 
         // Embedding 未配置时跳过召回与长期记忆写入，只在短期记忆内整理
         const bool longTermEnabled = !config.embedding.baseUrl.empty() && !config.embedding.model.empty();

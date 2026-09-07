@@ -4,6 +4,7 @@
 #include <agent/runtime/ExecutorAgent.hpp>
 #include <config/Config.hpp>
 #include <fmt/core.h>
+#include <message/MessageRecord.hpp>
 #include <model/OneBotMessage.hpp>
 #include <ranges>
 #include <regex>
@@ -52,9 +53,8 @@ namespace insoulforge {
                 "affinity": 好感度（-100～100 的整数，仅群成员消息有此字段，陌生人为 0）
             },
             "message_id": "消息ID（数字字符串）",
-            "text": "仅文本段；无文本时此字段缺失（更早对话已截断到 500 字，勿当作完整原文）",
-            "segments": "按原始顺序保存的文本、@提及、图片、表情与通知段",
-            "reply_to": "此消息引用回复的目标消息ID，没有引用时为 null"
+            "segments": "按原始顺序保存的富内容段；图片段带 image_index、识别状态和描述",
+            "reply_to": "此消息引用回复的唯一目标消息ID，仅实际引用时存在"
         }
     ],
     "recent_conversation": [
@@ -66,12 +66,11 @@ namespace insoulforge {
                 "affinity": 好感度（-100～100 的整数，仅群成员消息有此字段，陌生人为 0）
             },
             "message_id": "消息ID（数字字符串）",
-            "text": "仅文本段；无文本时此字段缺失",
-            "segments": "按原始顺序保存的富内容段",
+            "segments": "按原始顺序保存的富内容段；图片描述仅在图片段出现一次",
           	"memories": [
                 "召回的记忆片段，可能无关",
             ],
-            "reply_to": "此消息引用回复的目标消息ID，没有引用时为 null"
+            "reply_to": "此消息引用回复的唯一目标消息ID，仅实际引用时存在"
         }
     ],
     "response_requirements": {
@@ -85,8 +84,8 @@ namespace insoulforge {
   字段说明：
 
   - sender.qq 为 "self" 的记录是我自己发出的消息（name 形如「昵称(我)」），它没有 affinity 字段
-  - recent_conversation 的记录可能多出 images、faces、notifications、segments、memories 字段。图片描述在 images[].description，识别失败时看 recognition_status；图片 URL 和 file 仅供工具调用
-  - @提及保存在 segments 中 type="at" 的段；拍一拍、入群和退群保存在 notifications 中，它们不是 text
+  - segments 是消息内容和顺序的唯一来源：text、at、image、face、sticker、poke、member_event 都以类型化段表示
+  - image 段的 image_index 从 0 开始；图片来源不会出现在上下文。用户要求保存图片为表情时，save_sticker 传该消息的 message_id、image_index 和名称
   - 需要引用回复某条消息时，把该记录的 message_id 传给 reply_with_quote
   - response_requirements.max_length 是本轮回复的字数上限，回复尽量不超过
 
@@ -164,31 +163,21 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
             return text.substr(0, i) + "…";
         }
 
-        /// @brief 处理较早的单条消息记录：删除图片定位信息、截断文本后作为数组元素返回
-        [[nodiscard]] json processOlderRecord(const json &record) {
-            json content = parseRecordContent(record);
-            if (!content.is_object())
-                return content; // 历史存量可能是纯文本，解析失败原样保留
-            content.erase("images");
-            if (content.contains("segments") && content["segments"].is_array()) {
-                json segments = json::array();
-                for (const auto &segment: content["segments"]) {
-                    if (getStr(segment, "type") != "image") {
-                        segments.push_back(segment);
-                        continue;
-                    }
-                    json image;
-                    image["type"] = "image";
-                    image["recognition_status"] = getStr(segment, "recognition_status");
-                    if (const std::string description = getStr(segment, "description"); !description.empty())
-                        image["description"] = description;
-                    segments.push_back(std::move(image));
-                }
-                content["segments"] = std::move(segments);
+        /// @brief 将持久化记录投影为 Agent 上下文，可选截断较早消息的文本段
+        [[nodiscard]] json projectRecordForAgent(const json &record, const bool truncateText) {
+            const json raw = parseRecordContent(record);
+            if (!raw.is_object()) {
+                return getStr(record, "content"); // 历史存量可能是纯文本
             }
-            if (content.contains("text") && content["text"].is_string()) {
-                constexpr size_t kOldRecordMaxChars = 500;
-                content["text"] = truncateUtf8(content["text"].get<std::string>(), kOldRecordMaxChars);
+            json content = MessageRecord::projectForAgent(raw);
+            if (!truncateText) {
+                return content;
+            }
+            constexpr size_t kOldRecordMaxChars = 500;
+            for (auto &segment: content["segments"]) {
+                if (getStr(segment, "type") == "text") {
+                    segment["text"] = truncateUtf8(getStr(segment, "text"), kOldRecordMaxChars);
+                }
             }
             return content;
         }
@@ -207,12 +196,12 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
 
         /// @brief 聊天记录上下文（窗口内，旧 → 新）
         struct ChatContext {
-            json earlier = json::array(); // 更早记录：去 images、text 截断到 500 字
+            json earlier = json::array(); // 更早记录：文本段截断到 500 字
             json recent = json::array(); // 最近记录：注入好感度与召回的长期记忆
         };
 
         /// @brief 构建聊天记录上下文：
-        /// 最新 kRecentRecordCount 条原样保留，更早的每条 text 截断到 500 字；
+        /// 最新 kRecentRecordCount 条保留完整语义投影，更早记录的文本段截断到 500 字；
         /// 每条 sender 注入当前好感度 affinity；最近记录按 message_id 注入召回的长期记忆 memories
         /// （同一条记忆被多条消息命中时只挂在相似度最高的那条消息上）
         ChatContext buildChatContext(const ChatRecordManager &chatRecords) {
@@ -244,14 +233,14 @@ reply_and_continue：接下来要执行耗时操作（搜索、深度思考、�
 
             // 处理更早的对话
             for (const auto &record: olderRecords) {
-                context.earlier.push_back(injectAffinity(processOlderRecord(record), affinityMap));
+                context.earlier.push_back(injectAffinity(projectRecordForAgent(record, true), affinityMap));
             }
 
             // 处理最近对话（注入好感度与召回记忆）
             size_t recentIndex = 0;
             for (const auto &record: recentRecords) {
                 const size_t index = recentIndex++;
-                json content = injectAffinity(parseRecordContent(record), affinityMap);
+                json content = injectAffinity(projectRecordForAgent(record, false), affinityMap);
                 if (!recentHits[index].empty()) {
                     json memories = json::array();
                     for (const auto &hit: recentHits[index]) {

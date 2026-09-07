@@ -48,7 +48,7 @@ namespace insoulforge {
 
             const json &message = atOrNull((*respJson)["choices"][0], "message");
             const std::string description = jsonToString(atOrNull(message, "content"));
-            co_return description.empty() ? std::nullopt : std::optional<std::string>{description};
+            co_return description.empty() ? std::nullopt : std::optional{description};
         }
     } // namespace
 
@@ -141,33 +141,37 @@ namespace insoulforge {
         const auto senderName = std::string(getQQName(senderQQ));
         const std::string timeStr = currentDateTime();
 
-        std::string textContent;
         json images = json::array();
-        json faces = json::array();
-        json notifications = json::array();
         json segments = json::array();
         for (const auto &item: atOrNull(m_event, "message")) {
             const std::string type = getStr(item, "type");
             const json &data = atOrNull(item, "data");
             if (type == "text") {
                 const std::string text = getStr(data, "text");
-                textContent += text;
                 segments.push_back({{"type", "text"}, {"text", text}});
             } else if (type == "at") {
                 const uint64_t atQQ = parseUInt64(jsonToString(atOrNull(atOrNull(item, "data"), "qq")));
-                segments.push_back(
-                  {{"type", "at"}, {"qq", std::to_string(atQQ)}, {"name", std::string(getQQName(atQQ))}});
+                if (atQQ == 0) {
+                    segments.push_back({{"type", "at"}, {"target", {{"kind", "all"}}}});
+                } else {
+                    json target{{"qq", std::to_string(atQQ)}};
+                    if (const std::string name = getQQName(atQQ); name != "未知") {
+                        target["name"] = name;
+                    }
+                    segments.push_back({{"type", "at"}, {"target", std::move(target)}});
+                }
             } else if (type == "face") {
                 json face;
-                face["id"] = getStr(data, "id");
-                face["label"] = getStr(atOrNull(data, "raw"), "faceText");
-                faces.push_back(face);
                 face["type"] = "face";
+                face["id"] = getStr(data, "id");
+                if (const std::string label = getStr(atOrNull(data, "raw"), "faceText"); !label.empty()) {
+                    face["label"] = label;
+                }
                 segments.push_back(std::move(face));
             } else if (type == "image") {
+                const size_t imageIndex = images.size();
                 json image;
-                image["file"] = getStr(data, "file");
-                image["url"] = getStr(data, "url");
+                image["source"] = {{"file", getStr(data, "file")}, {"url", getStr(data, "url")}};
                 if (const auto description = co_await describeImage(getStr(data, "url"), getSessionId())) {
                     image["recognition_status"] = "succeeded";
                     image["description"] = *description;
@@ -175,13 +179,28 @@ namespace insoulforge {
                     image["recognition_status"] = "failed";
                 }
                 images.push_back(image);
-                image["type"] = "image";
-                segments.push_back(std::move(image));
-            } else if (type == "poke" || type == "notification") {
-                json notification = data;
-                notification["type"] = type;
-                notifications.push_back(notification);
-                segments.push_back(std::move(notification));
+                segments.push_back({{"type", "image"}, {"image_index", imageIndex}});
+            } else if (type == "poke") {
+                json target{{"qq", jsonToString(atOrNull(data, "target_id"))}};
+                if (const std::string name = getStr(data, "target_name"); !name.empty() && name != "未知") {
+                    target["name"] = name;
+                }
+                segments.push_back({{"type", "poke"}, {"target", std::move(target)}, {"direction", "inbound"}});
+            } else if (type == "notification") {
+                std::string action = getStr(data, "kind");
+                if (action.starts_with("member_")) {
+                    action.erase(0, std::string_view("member_").size());
+                }
+                json event{{"type", "member_event"}, {"action", std::move(action)}};
+                if (const std::string reason = getStr(data, "sub_type"); !reason.empty()) {
+                    event["reason"] = reason;
+                }
+                if (const std::string operatorId = jsonToString(atOrNull(data, "operator_id")); !operatorId.empty()) {
+                    event["operator"] = {{"qq", operatorId}};
+                }
+                segments.push_back(std::move(event));
+            } else if (type != "reply") {
+                segments.push_back({{"type", "unsupported"}, {"segment_type", type}});
             }
         }
 
@@ -190,23 +209,12 @@ namespace insoulforge {
         msgJson["sender"]["name"] = senderName;
         msgJson["sender"]["qq"] = std::to_string(senderQQ);
         msgJson["message_id"] = std::to_string(msgId);
-        if (!textContent.empty()) {
-            msgJson["text"] = std::move(textContent);
-        }
         msgJson["segments"] = std::move(segments);
         if (!images.empty()) {
-            msgJson["images"] = std::move(images);
-        }
-        if (!faces.empty()) {
-            msgJson["faces"] = std::move(faces);
-        }
-        if (!notifications.empty()) {
-            msgJson["notifications"] = std::move(notifications);
+            msgJson["assets"]["images"] = std::move(images);
         }
         if (m_replyTo > 0) {
             msgJson["reply_to"] = std::to_string(m_replyTo);
-        } else {
-            msgJson["reply_to"] = nullptr;
         }
 
         m_recordContent = dumpJson(msgJson);

@@ -5,9 +5,9 @@
 #include <algorithm>
 #include <cctype>
 #include <config/Config.hpp>
+#include <message/MessageRecord.hpp>
 #include <model/OneBotMessage.hpp>
 #include <ranges>
-#include <regex>
 #include <service/ChatRecordManager.hpp>
 #include <service/LlmClient.hpp>
 #include <service/PromptService.hpp>
@@ -36,52 +36,17 @@ namespace insoulforge {
             return false;
         }
 
-        /// @brief 压缩文本中的 CQ 码为语义标记（Router 只需语义，URL/ID 无用）
-        [[nodiscard]] std::string compressCQCodes(std::string text) {
-            static const std::regex replyPattern(R"(\[CQ:reply,id=\d+\])");
-            static const std::regex stickerPattern(R"(\[CQ:image,[^\]]*summary=([^,\]]+)[^\]]*\])");
-            static const std::regex imagePattern(R"(\[CQ:image,[^\]]*\])");
-            static const std::regex facePattern(R"(\[CQ:face,[^\]]*\])");
-            text = std::regex_replace(text, replyPattern, "[回复]");
-            text = std::regex_replace(text, stickerPattern, "[表情:$1]");
-            text = std::regex_replace(text, imagePattern, "[图片]");
-            text = std::regex_replace(text, facePattern, "[表情]");
-            return text;
-        }
-
         /// @brief 提取 Router 需要的最小上下文字段
         /// @details 富内容保留为类型化摘要，排除图片 URL、文件标识和消息 ID 等对决策无价值的数据。
         [[nodiscard]] json compactRecord(const std::string &content) {
             if (json root; tryParseJson(content, root) && root.is_object()) {
+                const json projected = MessageRecord::projectForAgent(root);
                 json record;
-                if (const std::string name = getStr(atOrNull(root, "sender"), "name"); !name.empty())
+                if (const std::string name = getStr(atOrNull(projected, "sender"), "name"); !name.empty())
                     record["sender"] = name;
                 json message;
-                if (const std::string text = getStr(root, "text"); !text.empty())
-                    message["text"] = compressCQCodes(text);
-                if (root.contains("faces"))
-                    message["faces"] = root["faces"];
-                if (root.contains("notifications"))
-                    message["notifications"] = root["notifications"];
-                if (root.contains("images")) {
-                    json images = json::array();
-                    for (const auto &image: root["images"]) {
-                        json summary;
-                        summary["recognition_status"] = getStr(image, "recognition_status");
-                        if (const std::string description = getStr(image, "description"); !description.empty())
-                            summary["description"] = description;
-                        images.push_back(std::move(summary));
-                    }
-                    message["images"] = std::move(images);
-                }
-                if (root.contains("segments")) {
-                    json mentions = json::array();
-                    for (const auto &segment: root["segments"]) {
-                        if (getStr(segment, "type") == "at")
-                            mentions.push_back({{"qq", getStr(segment, "qq")}, {"name", getStr(segment, "name")}});
-                    }
-                    if (!mentions.empty())
-                        message["mentions"] = std::move(mentions);
+                if (const json &segments = atOrNull(projected, "segments"); segments.is_array() && !segments.empty()) {
+                    message["segments"] = segments;
                 }
                 record["content"] = std::move(message);
                 return record;
