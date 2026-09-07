@@ -1,8 +1,8 @@
 /// @file MessageEventContractTests.cpp
 /// @brief 消息链路与领域事件的契约测试
 
-#include <cstddef>
 #include <config/Config.hpp>
+#include <cstddef>
 #include <drogon/utils/coroutine.h>
 #include <event/EventBus.hpp>
 #include <event/subscribers/MemoryMaintenanceSubscriber.hpp>
@@ -11,8 +11,8 @@
 #include <exception>
 #include <iostream>
 #include <memory>
-#include <message/MessageMiddleware.hpp>
 #include <message/MessageContext.hpp>
+#include <message/MessageMiddleware.hpp>
 #include <message/MessagePipeline.hpp>
 #include <message/middleware/AgentAvailabilityMiddleware.hpp>
 #include <message/middleware/EventNormalizationMiddleware.hpp>
@@ -185,11 +185,8 @@ namespace {
     void testMembershipNoticeNormalizesToRichNotification() {
         constexpr std::string_view kTestName = "membership notice normalization";
         auto runtime = std::make_shared<TestMessageRuntime>(true);
-        insoulforge::json notice = {{"post_type", "notice"},
-          {"notice_type", "group_increase"},
-          {"group_id", 100},
-          {"user_id", 11},
-          {"operator_id", 12}};
+        insoulforge::json notice = {{"post_type", "notice"}, {"notice_type", "group_increase"}, {"group_id", 100},
+          {"user_id", 11}, {"operator_id", 12}};
         insoulforge::MessageContext context(std::move(notice), runtime);
         insoulforge::EventNormalizationMiddleware middleware;
 
@@ -212,12 +209,8 @@ namespace {
         insoulforge::OneBotMessage::setCustomQQName(42, "Bot");
 
         auto runtime = std::make_shared<TestMessageRuntime>(true);
-        insoulforge::json notice = {{"post_type", "notice"},
-          {"notice_type", "notify"},
-          {"sub_type", "poke"},
-          {"group_id", 100},
-          {"user_id", 11},
-          {"target_id", 42}};
+        insoulforge::json notice = {{"post_type", "notice"}, {"notice_type", "notify"}, {"sub_type", "poke"},
+          {"group_id", 100}, {"user_id", 11}, {"target_id", 42}};
         insoulforge::MessageContext context(std::move(notice), runtime);
         insoulforge::EventNormalizationMiddleware middleware;
 

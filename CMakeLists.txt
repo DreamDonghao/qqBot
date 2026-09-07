@@ -88,27 +88,7 @@ endif ()
 
 include(CTest)
 if (BUILD_TESTING)
-    add_executable(insoulforge_contract_tests EXCLUDE_FROM_ALL
-            tests/MessageEventContractTests.cpp
-            $<TARGET_OBJECTS:${PROJECT_NAME}_backend>)
-    target_compile_features(insoulforge_contract_tests PRIVATE cxx_std_23)
-    target_include_directories(insoulforge_contract_tests PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            include)
-    target_link_libraries(insoulforge_contract_tests PRIVATE
-            Drogon::Drogon
-            spdlog::spdlog_header_only
-            fmt::fmt-header-only
-            SQLite3_lib)
-    if (nlohmann_json_FOUND)
-        target_link_libraries(insoulforge_contract_tests PRIVATE nlohmann_json::nlohmann_json)
-    else ()
-        target_include_directories(insoulforge_contract_tests PRIVATE ${NLOHMANN_JSON_INCLUDE_DIR})
-    endif ()
-    if (SQLITE3_STATIC_LIB)
-        target_link_libraries(insoulforge_contract_tests PRIVATE ${SQLITE3_STATIC_LIB})
-    endif ()
-    add_test(NAME message_event_contracts COMMAND insoulforge_contract_tests)
+    add_subdirectory(tests)
 endif ()
 
 # 前端构建 (Vue3) - 前端源码变化时自动重新构建，输出到 build/insoulforge/public
